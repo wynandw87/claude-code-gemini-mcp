@@ -1,0 +1,58 @@
+{
+  "name": "gemini-mcp-server",
+  "version": "1.0.0",
+  "description": "Google Gemini MCP server providing AI assistance, brainstorming, code review, and explanations",
+  "main": "dist/index.js",
+  "bin": {
+    "gemini-mcp-server": "dist/index.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "prepare": "npm run build",
+    "postinstall": "node scripts/postinstall.js",
+    "install:claude": "node scripts/install-claude-code.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "gemini",
+    "google-gemini",
+    "ai",
+    "claude-code",
+    "llm",
+    "brainstorming",
+    "code-review",
+    "ai-assistant"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wynandw87/claude-code-gemini-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/wynandw87/claude-code-gemini-mcp/issues"
+  },
+  "homepage": "https://github.com/wynandw87/claude-code-gemini-mcp#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
