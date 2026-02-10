@@ -18,6 +18,11 @@ export const SUPPORTED_MODELS = [
   'imagen-4.0-fast-generate-001'
 ] as const;
 
+export const GEMINI_3_MODELS = [
+  'gemini-3-flash-preview',
+  'gemini-3-pro-preview',
+] as const;
+
 export const IMAGE_CAPABLE_MODELS = [
   'gemini-2.5-flash-image',
   'gemini-3-pro-image-preview',

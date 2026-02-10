@@ -11,7 +11,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { loadConfig } from './config.js';
 import { createGeminiClient } from './gemini-client.js';
-import { BRAINSTORM_PROMPT, CODE_REVIEW_PROMPT, EXPLAIN_PROMPT, IMAGE_GENERATION_PROMPT } from './prompts.js';
+import {
+  BRAINSTORM_PROMPT, CODE_REVIEW_PROMPT, EXPLAIN_PROMPT, IMAGE_GENERATION_PROMPT,
+  SEARCH_WEB_PROMPT, CODE_EXECUTION_PROMPT, URL_CONTEXT_PROMPT, GOOGLE_MAPS_PROMPT
+} from './prompts.js';
 
 const DEFAULT_IMAGE_MODEL = 'gemini-2.5-flash-image';
 
@@ -166,6 +169,170 @@ async function main() {
                 }
               },
               required: ['prompt', 'image_path']
+            }
+          },
+          {
+            name: 'search_web',
+            description: 'Search the web using Gemini with Google Search grounding. Returns search results with citations and source URLs.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                query: {
+                  type: 'string',
+                  description: 'The search query or question to research on the web'
+                },
+                model: {
+                  type: 'string',
+                  description: 'Model identifier (optional, defaults to gemini-2.5-flash)'
+                },
+                excluded_domains: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Exclude these domains from search (max 5)',
+                  maxItems: 5
+                }
+              },
+              required: ['query']
+            }
+          },
+          {
+            name: 'search_with_thinking',
+            description: "Query Gemini with extended thinking/reasoning enabled. Shows the model's thought process alongside its answer. Best for complex reasoning tasks.",
+            inputSchema: {
+              type: 'object',
+              properties: {
+                prompt: {
+                  type: 'string',
+                  description: 'The question or problem requiring deep reasoning'
+                },
+                model: {
+                  type: 'string',
+                  description: 'Model identifier (optional, defaults to gemini-2.5-flash). All Gemini 2.5 and 3 models support thinking.'
+                },
+                thinking_level: {
+                  type: 'string',
+                  description: 'Thinking intensity: "minimal", "low", "medium", "high" (default: "high")',
+                  enum: ['minimal', 'low', 'medium', 'high']
+                },
+                thinking_budget: {
+                  type: 'number',
+                  description: 'Token budget for thinking (Gemini 2.5 models only). Default: 8192. Use -1 for automatic.'
+                }
+              },
+              required: ['prompt']
+            }
+          },
+          {
+            name: 'run_code',
+            description: "Execute Python code in Gemini's sandboxed environment with NumPy, Pandas, Matplotlib, SciPy. Useful for calculations, data analysis, and generating visualizations.",
+            inputSchema: {
+              type: 'object',
+              properties: {
+                prompt: {
+                  type: 'string',
+                  description: 'Description of what to compute or analyze. Gemini will write and execute Python code automatically.'
+                },
+                model: {
+                  type: 'string',
+                  description: 'Model identifier (optional, defaults to gemini-2.5-flash)'
+                }
+              },
+              required: ['prompt']
+            }
+          },
+          {
+            name: 'fetch_url',
+            description: "Fetch and analyze web page content using Gemini's URL context tool. Provide URLs and a question about their content.",
+            inputSchema: {
+              type: 'object',
+              properties: {
+                prompt: {
+                  type: 'string',
+                  description: 'Question or instruction about the URL content'
+                },
+                urls: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'URLs to fetch and analyze (max 20)',
+                  maxItems: 20
+                },
+                model: {
+                  type: 'string',
+                  description: 'Model identifier (optional, defaults to gemini-2.5-flash)'
+                }
+              },
+              required: ['prompt', 'urls']
+            }
+          },
+          {
+            name: 'analyze_image',
+            description: "Analyze an image using Gemini's vision model. Provide a file path and optional prompt.",
+            inputSchema: {
+              type: 'object',
+              properties: {
+                image_path: {
+                  type: 'string',
+                  description: 'Absolute path to the image file to analyze'
+                },
+                prompt: {
+                  type: 'string',
+                  description: 'Question or instruction about the image',
+                  default: 'Describe this image in detail'
+                },
+                model: {
+                  type: 'string',
+                  description: 'Model identifier (optional, defaults to gemini-2.5-flash)'
+                }
+              },
+              required: ['image_path']
+            }
+          },
+          {
+            name: 'upload_file',
+            description: 'Upload a document for Gemini to analyze. Supports: txt, md, py, js, csv, json, pdf, and more (max 48MB). Optionally ask a question about it immediately.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                file_path: {
+                  type: 'string',
+                  description: 'Absolute path to the file to upload'
+                },
+                query: {
+                  type: 'string',
+                  description: 'Optional question to ask about the file immediately after upload'
+                },
+                model: {
+                  type: 'string',
+                  description: 'Model identifier (optional, defaults to gemini-2.5-flash)'
+                }
+              },
+              required: ['file_path']
+            }
+          },
+          {
+            name: 'google_maps',
+            description: 'Location-aware queries using Google Maps grounding. Find places, get reviews, and location information.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                query: {
+                  type: 'string',
+                  description: 'Location-related query (e.g., "best coffee shops near me")'
+                },
+                latitude: {
+                  type: 'number',
+                  description: 'Optional latitude for location context'
+                },
+                longitude: {
+                  type: 'number',
+                  description: 'Optional longitude for location context'
+                },
+                model: {
+                  type: 'string',
+                  description: 'Model identifier (optional, defaults to gemini-2.5-flash)'
+                }
+              },
+              required: ['query']
             }
           }
         ]
@@ -365,6 +532,187 @@ async function main() {
             return { content };
           }
 
+          case 'search_web': {
+            const schema = z.object({
+              query: z.string().min(1),
+              model: z.string().optional(),
+              excluded_domains: z.array(z.string()).max(5).optional()
+            });
+            const input = schema.parse(args);
+            const model = input.model || config.defaultModel;
+
+            const result = await client.searchWeb(model, input.query, {
+              systemPrompt: SEARCH_WEB_PROMPT,
+              excludeDomains: input.excluded_domains
+            });
+
+            let responseText = result.text;
+            if (result.citations.length > 0) {
+              responseText += '\n\n---\n**Sources:**\n';
+              for (const citation of result.citations) {
+                responseText += `- [${citation.title}](${citation.uri})\n`;
+              }
+            }
+            if (result.searchQueries.length > 0) {
+              responseText += `\n**Search queries:** ${result.searchQueries.join(', ')}`;
+            }
+
+            return { content: [{ type: 'text', text: responseText }] };
+          }
+
+          case 'search_with_thinking': {
+            const schema = z.object({
+              prompt: z.string().min(1),
+              model: z.string().optional(),
+              thinking_level: z.enum(['minimal', 'low', 'medium', 'high']).optional(),
+              thinking_budget: z.number().optional()
+            });
+            const input = schema.parse(args);
+            const model = input.model || config.defaultModel;
+
+            const result = await client.generateWithThinking(model, input.prompt, {
+              thinkingLevel: input.thinking_level,
+              thinkingBudget: input.thinking_budget
+            });
+
+            let responseText = '';
+            if (result.thinking) {
+              responseText += `<thinking>\n${result.thinking}\n</thinking>\n\n`;
+            }
+            responseText += result.text;
+            if (result.thinkingTokens) {
+              responseText += `\n\n---\n*Thinking tokens used: ${result.thinkingTokens}*`;
+            }
+
+            return { content: [{ type: 'text', text: responseText }] };
+          }
+
+          case 'run_code': {
+            const schema = z.object({
+              prompt: z.string().min(1),
+              model: z.string().optional()
+            });
+            const input = schema.parse(args);
+            const model = input.model || config.defaultModel;
+
+            const result = await client.executeCode(model, input.prompt, CODE_EXECUTION_PROMPT);
+
+            let responseText = result.text;
+            if (result.code) {
+              responseText += '\n\n```python\n' + result.code + '\n```';
+            }
+            if (result.output) {
+              responseText += '\n\n**Output:**\n```\n' + result.output + '\n```';
+            }
+
+            return { content: [{ type: 'text', text: responseText }] };
+          }
+
+          case 'fetch_url': {
+            const schema = z.object({
+              prompt: z.string().min(1),
+              urls: z.array(z.string()).min(1).max(20),
+              model: z.string().optional()
+            });
+            const input = schema.parse(args);
+            const model = input.model || config.defaultModel;
+
+            const result = await client.fetchUrl(model, input.prompt, input.urls, URL_CONTEXT_PROMPT);
+
+            let responseText = result.text;
+            if (result.urlMetadata.length > 0) {
+              responseText += '\n\n---\n**URL Retrieval Status:**\n';
+              for (const meta of result.urlMetadata) {
+                const statusIcon = meta.status === 'URL_RETRIEVAL_STATUS_SUCCESS' ? 'OK' : meta.status;
+                responseText += `- ${meta.url}: ${statusIcon}\n`;
+              }
+            }
+
+            return { content: [{ type: 'text', text: responseText }] };
+          }
+
+          case 'analyze_image': {
+            const schema = z.object({
+              image_path: z.string().min(1),
+              prompt: z.string().optional(),
+              model: z.string().optional()
+            });
+            const input = schema.parse(args);
+            const model = input.model || config.defaultModel;
+            const prompt = input.prompt || 'Describe this image in detail';
+
+            const imagePath = path.resolve(input.image_path);
+            if (!fs.existsSync(imagePath)) {
+              return {
+                content: [{ type: 'text', text: `Image not found: ${imagePath}` }],
+                isError: true
+              };
+            }
+
+            const imageBuffer = fs.readFileSync(imagePath);
+            const imageBase64 = imageBuffer.toString('base64');
+            const mimeType = getMimeType(imagePath);
+
+            const response = await client.analyzeImage(model, prompt, imageBase64, mimeType);
+
+            return { content: [{ type: 'text', text: response }] };
+          }
+
+          case 'upload_file': {
+            const schema = z.object({
+              file_path: z.string().min(1),
+              query: z.string().optional(),
+              model: z.string().optional()
+            });
+            const input = schema.parse(args);
+            const model = input.model || config.defaultModel;
+
+            const filePath = path.resolve(input.file_path);
+            if (!fs.existsSync(filePath)) {
+              return {
+                content: [{ type: 'text', text: `File not found: ${filePath}` }],
+                isError: true
+              };
+            }
+
+            const result = await client.uploadAndQuery(model, filePath, input.query);
+
+            let responseText = result.text;
+            responseText += `\n\n---\n*File: ${result.fileName}*`;
+
+            return { content: [{ type: 'text', text: responseText }] };
+          }
+
+          case 'google_maps': {
+            const schema = z.object({
+              query: z.string().min(1),
+              latitude: z.number().min(-90).max(90).optional(),
+              longitude: z.number().min(-180).max(180).optional(),
+              model: z.string().optional()
+            });
+            const input = schema.parse(args);
+            const model = input.model || config.defaultModel;
+
+            const result = await client.searchMaps(model, input.query, {
+              systemPrompt: GOOGLE_MAPS_PROMPT,
+              latitude: input.latitude,
+              longitude: input.longitude
+            });
+
+            let responseText = result.text;
+            if (result.places.length > 0) {
+              responseText += '\n\n---\n**Places:**\n';
+              for (const place of result.places) {
+                responseText += `- **${place.title}**`;
+                if (place.uri) responseText += ` ([View](${place.uri}))`;
+                if (place.text) responseText += `\n  ${place.text}`;
+                responseText += '\n';
+              }
+            }
+
+            return { content: [{ type: 'text', text: responseText }] };
+          }
+
           default:
             throw new Error(`Unknown tool: ${name}`);
         }
@@ -381,7 +729,7 @@ async function main() {
     await server.connect(transport);
 
     // Log startup message to stderr (stdout is used for MCP protocol)
-    console.error('Gemini MCP Server v2.0.0 running (text + image generation)');
+    console.error('Gemini MCP Server v3.0.0 running');
 
     // Handle graceful shutdown
     process.on('SIGINT', async () => {

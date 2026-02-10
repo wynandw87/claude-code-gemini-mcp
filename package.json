@@ -1,7 +1,7 @@
 {
   "name": "gemini-mcp-server",
-  "version": "2.0.0",
-  "description": "Google Gemini MCP server providing AI assistance, brainstorming, code review, explanations, and image generation",
+  "version": "3.0.0",
+  "description": "Google Gemini MCP server providing AI assistance, web search, thinking/reasoning, code execution, URL fetching, image generation/editing/analysis, file upload, and Google Maps grounding",
   "main": "dist/index.js",
   "bin": {
     "gemini-mcp-server": "dist/index.js"
