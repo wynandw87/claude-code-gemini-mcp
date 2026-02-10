@@ -119,8 +119,8 @@ You should see `gemini` in the list of installed servers.
 - **gemini-3-pro-preview** - Latest Pro model for maximum quality
 
 ### Image-Capable Models
-- **gemini-2.0-flash-exp** - Default image model, supports text+image generation and editing
-- **gemini-2.0-flash-preview-image-generation** - Preview image generation model
+- **gemini-2.5-flash-image** - Default image model, fast text+image generation and editing
+- **gemini-3-pro-image-preview** - Pro-quality image generation for professional asset production
 
 ### Imagen Models
 - **imagen-4.0-generate-001** - High-quality image generation
@@ -163,7 +163,7 @@ Generate images from text prompts. Returns the image inline in Claude Code and s
 
 **Parameters:**
 - `prompt` (string, required) - Image generation prompt
-- `model` (string, optional) - Model to use (defaults to `gemini-2.0-flash-exp`)
+- `model` (string, optional) - Model to use (defaults to `gemini-2.5-flash-image`)
 - `aspect_ratio` (string, optional) - `"1:1"`, `"16:9"`, `"9:16"`, `"4:3"`, `"3:4"`
 - `resolution` (string, optional) - `"1K"`, `"2K"`, `"4K"` (Gemini models only)
 - `save_path` (string, optional) - File path to save the image (auto-saves if not provided)
@@ -175,7 +175,7 @@ Edit an existing image using natural language instructions. Returns the edited i
 **Parameters:**
 - `prompt` (string, required) - Edit instructions
 - `image_path` (string, required) - Absolute path to the source image
-- `model` (string, optional) - Model to use (defaults to `gemini-2.0-flash-exp`)
+- `model` (string, optional) - Model to use (defaults to `gemini-2.5-flash-image`)
 - `aspect_ratio` (string, optional) - `"1:1"`, `"16:9"`, `"9:16"`, `"4:3"`, `"3:4"`
 - `resolution` (string, optional) - `"1K"`, `"2K"`, `"4K"`
 - `save_path` (string, optional) - File path to save the edited image (auto-saves if not provided)

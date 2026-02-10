@@ -19,8 +19,8 @@ export const SUPPORTED_MODELS = [
 ] as const;
 
 export const IMAGE_CAPABLE_MODELS = [
-  'gemini-2.0-flash-exp',
-  'gemini-2.0-flash-preview-image-generation',
+  'gemini-2.5-flash-image',
+  'gemini-3-pro-image-preview',
   'imagen-4.0-generate-001',
   'imagen-4.0-fast-generate-001'
 ] as const;

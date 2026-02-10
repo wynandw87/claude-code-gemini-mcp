@@ -13,7 +13,7 @@ import { loadConfig } from './config.js';
 import { createGeminiClient } from './gemini-client.js';
 import { BRAINSTORM_PROMPT, CODE_REVIEW_PROMPT, EXPLAIN_PROMPT, IMAGE_GENERATION_PROMPT } from './prompts.js';
 
-const DEFAULT_IMAGE_MODEL = 'gemini-2.0-flash-exp';
+const DEFAULT_IMAGE_MODEL = 'gemini-2.5-flash-image';
 
 async function main() {
   try {
@@ -112,7 +112,7 @@ async function main() {
                 },
                 model: {
                   type: 'string',
-                  description: `Model to use (optional, defaults to "${DEFAULT_IMAGE_MODEL}"). Options: gemini-2.0-flash-exp, gemini-2.0-flash-preview-image-generation, imagen-4.0-generate-001, imagen-4.0-fast-generate-001`
+                  description: `Model to use (optional, defaults to "${DEFAULT_IMAGE_MODEL}"). Options: gemini-2.5-flash-image, gemini-3-pro-image-preview, imagen-4.0-generate-001, imagen-4.0-fast-generate-001`
                 },
                 aspect_ratio: {
                   type: 'string',
