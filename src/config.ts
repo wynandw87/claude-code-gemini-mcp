@@ -2,13 +2,27 @@ export interface Config {
   apiKey: string;
   defaultModel: string;
   timeout: number;
+  outputDir: string;
 }
 
 export const SUPPORTED_MODELS = [
+  // Text models
   'gemini-2.5-flash',
   'gemini-2.5-pro',
   'gemini-3-flash-preview',
-  'gemini-3-pro-preview'
+  'gemini-3-pro-preview',
+  // Image-capable text+image models
+  'gemini-2.5-flash-preview-native-audio-dialog',
+  // Imagen models
+  'imagen-4.0-generate-001',
+  'imagen-4.0-fast-generate-001'
+] as const;
+
+export const IMAGE_CAPABLE_MODELS = [
+  'gemini-2.0-flash-exp',
+  'gemini-2.0-flash-preview-image-generation',
+  'imagen-4.0-generate-001',
+  'imagen-4.0-fast-generate-001'
 ] as const;
 
 export function loadConfig(): Config {
@@ -20,6 +34,7 @@ export function loadConfig(): Config {
   }
 
   const defaultModel = process.env.GEMINI_DEFAULT_MODEL || 'gemini-2.5-flash';
+  const outputDir = process.env.GEMINI_OUTPUT_DIR || './generated-images';
 
   const timeoutStr = process.env.GEMINI_TIMEOUT;
   const timeout = timeoutStr ? parseInt(timeoutStr, 10) : 60000;
@@ -31,6 +46,7 @@ export function loadConfig(): Config {
   return {
     apiKey,
     defaultModel,
-    timeout
+    timeout,
+    outputDir
   };
 }
