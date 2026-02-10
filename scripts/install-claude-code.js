@@ -68,8 +68,9 @@ if (!isInstalled) {
 
     if (!process.env.GEMINI_API_KEY) {
       console.log('⚠️  GEMINI_API_KEY not found in environment');
-      console.log('   You can set it later by editing ~/.claude.json and adding:');
-      console.log('   "env": { "GEMINI_API_KEY": "your-api-key" }\n');
+      console.log('   To add your API key, remove and re-add the server:\n');
+      console.log('   claude mcp remove gemini');
+      console.log(`   claude mcp add -s user gemini -e GEMINI_API_KEY="YOUR_API_KEY" -- node "${absolutePath.replace(/\\/g, '/')}"\n`);
       console.log('📖 Get your API key from: https://makersuite.google.com/app/apikey\n');
     }
 

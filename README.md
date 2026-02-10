@@ -2,6 +2,99 @@
 
 MCP server that brings Google Gemini to Claude Code — text generation, brainstorming, code review, explanations, web search, thinking/reasoning, code execution, URL fetching, image generation/editing/analysis, file upload, and Google Maps grounding. Supports Gemini 2.5/3 and Imagen 4.0 models.
 
+## Quick Start
+
+### Step 1: Get Your API Key
+
+1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
+2. Create an account or sign in
+3. Generate an API key
+4. Copy the key (you'll need it in Step 3)
+
+### Step 2: Install Prerequisites
+
+- **Node.js 18+** - [Download here](https://nodejs.org/)
+- **Claude Code CLI** - [Installation guide](https://docs.anthropic.com/claude-code)
+
+### Step 3: Install the MCP Server
+
+#### 3.1 Clone the repository
+
+```text
+git clone https://github.com/wynandw87/claude-code-gemini-mcp.git
+cd claude-code-gemini-mcp
+```
+
+#### 3.2 Install dependencies
+
+**macOS / Linux / Windows:**
+```text
+npm install
+```
+
+> **Note:** Dependencies are installed and the server is built automatically in one step.
+
+#### 3.3 Register with Claude Code
+
+Choose your install scope:
+
+| Scope | Flag | Who can use it |
+|-------|------|----------------|
+| **User** (recommended) | `-s user` | You, in any project |
+| **Project** | `-s project` | Anyone who clones this repo |
+| **Local** | `-s local` | Only in current directory |
+
+Replace `YOUR_API_KEY` with your actual Google AI API key, and use the full path to `dist/index.js`.
+
+> **Tip:** To get the full path, run this from the cloned directory:
+> - macOS/Linux: `echo "$(pwd)/dist/index.js"`
+> - Windows: `echo %cd%\dist\index.js`
+
+**macOS / Linux:**
+```text
+claude mcp add -s user gemini -e GEMINI_API_KEY=YOUR_API_KEY -- node /full/path/to/dist/index.js
+```
+
+**Windows:**
+```text
+claude mcp add -s user gemini -e GEMINI_API_KEY=YOUR_API_KEY -- node C:\full\path\to\dist\index.js
+```
+
+#### Alternative: Use Setup Scripts
+
+The setup scripts handle dependency installation, building, and registration automatically.
+
+**macOS / Linux:**
+```text
+chmod +x setup.sh
+./setup.sh YOUR_API_KEY
+```
+
+**Windows (PowerShell):**
+```text
+.\setup.ps1 -ApiKey YOUR_API_KEY
+```
+
+**Or use the npm helper (if API key is set in environment):**
+```text
+export GEMINI_API_KEY=YOUR_API_KEY
+npm run install:claude
+```
+
+### Step 4: Restart Claude Code
+
+Close and reopen Claude Code for the changes to take effect.
+
+### Step 5: Verify Installation
+
+```text
+claude mcp list
+```
+
+You should see `gemini` listed with a Connected status.
+
+---
+
 ## Features
 
 ### Text & Reasoning
@@ -25,51 +118,38 @@ MCP server that brings Google Gemini to Claude Code — text generation, brainst
 - **Image Editing** (`edit_image`) - Edit existing images with natural language instructions
 - **Image Analysis** (`analyze_image`) - Vision model to describe and analyze images
 
-## Quick Start
-
-### 1. Get Your API Key
-
-Go to [Google AI Studio](https://makersuite.google.com/app/apikey) and create an API key.
-
-### 2. Install
-
-```bash
-git clone https://github.com/wynandw87/claude-code-gemini-mcp.git
-cd claude-code-gemini-mcp
-npm install
-npm run build
-```
-
-### 3. Register with Claude Code
-
-```bash
-claude mcp add -s user gemini -e GEMINI_API_KEY="your-api-key" -- node "/full/path/to/claude-code-gemini-mcp/dist/index.js"
-```
-
-### 4. Restart Claude Code
-
-Verify with:
-```bash
-claude mcp list
-```
+---
 
 ## Usage
 
+Once installed, use trigger phrases to invoke Gemini:
+
 | Trigger | Tool | Example |
 |---------|------|---------|
-| `gemini search` | search_web | "gemini search: latest React 19 features" |
-| `gemini think` | search_with_thinking | "gemini think: prove sqrt(2) is irrational" |
-| `gemini run code` | run_code | "gemini calculate the first 50 prime numbers" |
-| `gemini fetch` | fetch_url | "gemini fetch and summarize https://example.com" |
-| `gemini analyze image` | analyze_image | "gemini analyze image at ./screenshot.png" |
-| `gemini upload` | upload_file | "gemini upload ./report.pdf and summarize it" |
-| `gemini maps` | google_maps | "gemini maps: best coffee shops in London" |
-| `use gemini`, `ask gemini` | ask | "ask gemini about quantum computing" |
-| `gemini review` | code_review | "gemini review this function for security" |
-| `gemini brainstorm` | brainstorm | "gemini brainstorm ideas for authentication" |
-| `gemini explain` | explain | "gemini explain how WebSockets work" |
-| `gemini generate image` | generate_image | "gemini generate image of a sunset" |
-| `gemini edit image` | edit_image | "gemini edit image: make the sky more blue" |
+| `use gemini`, `ask gemini` | Ask | "ask gemini about quantum computing" |
+| `gemini review`, `have gemini review` | Code Review | "gemini review this function for security" |
+| `gemini brainstorm`, `gemini ideas` | Brainstorm | "gemini brainstorm ideas for authentication" |
+| `gemini explain` | Explain | "gemini explain how WebSockets work" |
+| `gemini search`, `gemini web search` | Web Search | "gemini search: latest React 19 features" |
+| `gemini think` | Thinking | "gemini think: prove sqrt(2) is irrational" |
+| `gemini run code`, `gemini calculate` | Run Code | "gemini calculate the first 50 prime numbers" |
+| `gemini fetch` | Fetch URL | "gemini fetch and summarize https://example.com" |
+| `gemini upload file` | Upload File | "gemini upload ./report.pdf and summarize it" |
+| `gemini maps` | Google Maps | "gemini maps: best coffee shops in London" |
+| `gemini generate image`, `gemini image` | Generate Image | "gemini generate image of a sunset" |
+| `gemini edit image` | Edit Image | "gemini edit image: make the sky more blue" |
+| `gemini analyze image`, `gemini vision` | Analyze Image | "gemini analyze image at ./screenshot.png" |
+
+Or ask naturally:
+
+- *"Ask Gemini what it thinks about this approach"*
+- *"Have Gemini review this code for security issues"*
+- *"Brainstorm with Gemini about scaling strategies"*
+- *"Gemini search the web for the latest news on AI"*
+- *"Gemini run code to calculate compound interest over 10 years"*
+- *"Upload this CSV to Gemini and ask it to summarize the data"*
+- *"Gemini generate an image of a futuristic city"*
+- *"Gemini describe what's in this screenshot"*
 
 ---
 
@@ -253,7 +333,7 @@ This MCP server uses the official `@google/genai` SDK to communicate with Google
 
 ## Development
 
-```bash
+```text
 npm run dev      # Development mode with hot-reloading
 npm run build    # Build for production
 npm start        # Start production server
@@ -261,19 +341,58 @@ npm start        # Start production server
 
 ## Troubleshooting
 
-**Server won't start:**
-- Verify `GEMINI_API_KEY` is set
-- Check that the server was built (`npm run build`)
-- Ensure Node.js 18+
+### Fix API Key
 
-**Tool not appearing:**
-- Verify the path in config is correct and absolute
-- Restart Claude Code after changes
-- Run `claude mcp list` to check status
+If you entered the wrong API key, remove and reinstall:
 
-**Timeout errors:**
+```text
+claude mcp remove gemini
+```
+
+Then reinstall using the command from Step 3.3 above (use the same scope you originally installed with).
+
+### MCP Server Not Showing Up
+
+Check if the server is installed:
+
+```text
+claude mcp list
+```
+
+If not listed, follow Step 3 to install it.
+
+### Server Won't Start
+
+1. **Verify your API key** is valid at [Google AI Studio](https://makersuite.google.com/app/apikey)
+
+2. **Check Node.js version** (needs 18+):
+   ```text
+   node --version
+   ```
+
+3. **Ensure the server was built:**
+   ```text
+   npm run build
+   ```
+
+### Connection Errors
+
+1. **Check that `dist/index.js` exists** — if not, run `npm run build`
+2. **Verify the path is absolute** in your `claude mcp add` command
+3. **Restart Claude Code** after any configuration changes
+
+### Timeout Errors
+
 - Thinking and search tools use extended timeouts (3-5x base)
-- Increase `GEMINI_TIMEOUT` for slow connections
+- Increase `GEMINI_TIMEOUT` environment variable for slow connections
+
+### View Current Configuration
+
+```text
+claude mcp list
+```
+
+---
 
 ## Contributing
 
