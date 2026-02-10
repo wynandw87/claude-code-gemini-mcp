@@ -1,13 +1,15 @@
 # Google Gemini MCP Server
 
-A Model Context Protocol (MCP) server that provides access to Google Gemini AI models for Claude Code. This server enables general-purpose AI queries, creative brainstorming, code review, and concept explanations.
+A Model Context Protocol (MCP) server that provides access to Google Gemini AI models for Claude Code. This server enables general-purpose AI queries, creative brainstorming, code review, concept explanations, and image generation.
 
 ## Features
 
-- **General Queries** (`ask_gemini`) - Flexible interface to query any supported Gemini model
-- **Brainstorming** (`gemini_brainstorm`) - Creative ideation using Gemini 3 Pro
-- **Code Review** (`gemini_code_review`) - Thorough code analysis using Gemini 2.5 Pro
-- **Explanations** (`gemini_explain`) - Clear concept explanations using Gemini 3 Flash
+- **General Queries** (`ask`) - Flexible interface to query any supported Gemini model
+- **Brainstorming** (`brainstorm`) - Creative ideation using Gemini 3 Pro
+- **Code Review** (`code_review`) - Thorough code analysis using Gemini 2.5 Pro
+- **Explanations** (`explain`) - Clear concept explanations using Gemini 3 Flash
+- **Image Generation** (`generate_image`) - Text-to-image generation using Gemini or Imagen models
+- **Image Editing** (`edit_image`) - Edit existing images with natural language instructions
 
 ## Installation
 
@@ -96,6 +98,7 @@ This will automatically configure Claude Code to use the server.
 **Optional:**
 - `GEMINI_DEFAULT_MODEL` - Override the default model (defaults to `gemini-2.5-flash`)
 - `GEMINI_TIMEOUT` - API timeout in milliseconds (defaults to 60000)
+- `GEMINI_OUTPUT_DIR` - Directory for auto-saved generated images (defaults to `./generated-images`)
 
 ### Verifying Installation
 
@@ -109,14 +112,23 @@ You should see `gemini` in the list of installed servers.
 
 ## Supported Models
 
+### Text Models
 - **gemini-2.5-flash** - Default model, fast and cost-effective
 - **gemini-2.5-pro** - High-quality reasoning and analysis
 - **gemini-3-flash-preview** - Latest Flash model with cutting-edge capabilities
 - **gemini-3-pro-preview** - Latest Pro model for maximum quality
 
+### Image-Capable Models
+- **gemini-2.0-flash-exp** - Default image model, supports text+image generation and editing
+- **gemini-2.0-flash-preview-image-generation** - Preview image generation model
+
+### Imagen Models
+- **imagen-4.0-generate-001** - High-quality image generation
+- **imagen-4.0-fast-generate-001** - Fast image generation
+
 ## Usage
 
-### ask_gemini
+### ask
 
 Query any Gemini model with a custom prompt.
 
@@ -124,49 +136,49 @@ Query any Gemini model with a custom prompt.
 - `prompt` (string, required) - The question or instruction
 - `model` (string, optional) - Model identifier (defaults to `gemini-2.5-flash`)
 
-**Example:**
-```
-Use the ask_gemini tool to query: "What are the benefits of TypeScript?"
-```
-
-### gemini_brainstorm
+### brainstorm
 
 Get creative ideas and brainstorming assistance.
 
 **Parameters:**
 - `topic` (string, required) - The subject to brainstorm about
 
-**Example:**
-```
-Use the gemini_brainstorm tool with topic: "innovative features for a note-taking app"
-```
-
-### gemini_code_review
+### code_review
 
 Get thorough code analysis and review.
 
 **Parameters:**
 - `code` (string, required) - The code to review
 
-**Example:**
-```
-Use the gemini_code_review tool to review:
-function processData(data) {
-  return data.map(x => x * 2);
-}
-```
-
-### gemini_explain
+### explain
 
 Get clear explanations of concepts or code.
 
 **Parameters:**
 - `concept` (string, required) - What to explain
 
-**Example:**
-```
-Use the gemini_explain tool to explain: "How does async/await work in JavaScript?"
-```
+### generate_image
+
+Generate images from text prompts. Returns the image inline in Claude Code and saves to disk.
+
+**Parameters:**
+- `prompt` (string, required) - Image generation prompt
+- `model` (string, optional) - Model to use (defaults to `gemini-2.0-flash-exp`)
+- `aspect_ratio` (string, optional) - `"1:1"`, `"16:9"`, `"9:16"`, `"4:3"`, `"3:4"`
+- `resolution` (string, optional) - `"1K"`, `"2K"`, `"4K"` (Gemini models only)
+- `save_path` (string, optional) - File path to save the image (auto-saves if not provided)
+
+### edit_image
+
+Edit an existing image using natural language instructions. Returns the edited image inline and saves to disk.
+
+**Parameters:**
+- `prompt` (string, required) - Edit instructions
+- `image_path` (string, required) - Absolute path to the source image
+- `model` (string, optional) - Model to use (defaults to `gemini-2.0-flash-exp`)
+- `aspect_ratio` (string, optional) - `"1:1"`, `"16:9"`, `"9:16"`, `"4:3"`, `"3:4"`
+- `resolution` (string, optional) - `"1K"`, `"2K"`, `"4K"`
+- `save_path` (string, optional) - File path to save the edited image (auto-saves if not provided)
 
 ## Development
 
@@ -193,8 +205,8 @@ The server provides clear error messages for common issues:
 - **Invalid API Key**: "Invalid Gemini API key. Please check your GEMINI_API_KEY environment variable."
 - **Rate Limit**: "Gemini API rate limit exceeded. Please wait a moment and try again."
 - **Network Errors**: "Failed to connect to Gemini API: [details]"
-- **Invalid Model**: "Unknown model '[name]'. Available models: [list]"
 - **Content Safety**: "Content blocked by Gemini's safety filters. Try rephrasing your request."
+- **Timeout**: "Gemini API request timed out. Please try again."
 
 ## Troubleshooting
 
@@ -213,35 +225,10 @@ The server provides clear error messages for common issues:
 - Check your API usage limits and quotas
 - Ensure you're using a supported model name
 
-## Publishing to npm
-
-To publish this package to npm (for maintainers):
-
-1. **Ensure you're logged in to npm:**
-   ```bash
-   npm login
-   ```
-
-2. **Update the version in package.json** (follow semantic versioning):
-   ```bash
-   npm version patch  # or minor, or major
-   ```
-
-3. **Publish to npm:**
-   ```bash
-   npm publish
-   ```
-
-4. **Verify publication:**
-   ```bash
-   npm info gemini-mcp-server
-   ```
-
-After publishing, users can install with:
-```bash
-npm install -g gemini-mcp-server
-claude mcp add gemini -e GEMINI_API_KEY="your-key" -- gemini-mcp-server
-```
+**Image generation issues:**
+- Image generation uses a 3x timeout multiplier to account for longer processing
+- If images aren't displaying inline, ensure your MCP SDK version supports image content blocks
+- Check the `GEMINI_OUTPUT_DIR` path is writable for auto-saved images
 
 ## Contributing
 
