@@ -339,7 +339,6 @@ This MCP server uses the official `@google/genai` SDK to communicate with Google
 ## Development
 
 ```text
-npm run dev      # Development mode with hot-reloading
 npm run build    # Build for production
 npm start        # Start production server
 ```
