@@ -9,7 +9,7 @@ import {
 import { z } from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
-import { loadConfig } from './config.js';
+import { loadConfig, NANO_BANANA_PRO_MODEL, ALL_ASPECT_RATIOS } from './config.js';
 import { createGeminiClient } from './gemini-client.js';
 import {
   BRAINSTORM_PROMPT, CODE_REVIEW_PROMPT, EXPLAIN_PROMPT, IMAGE_GENERATION_PROMPT,
@@ -105,7 +105,7 @@ async function main() {
           },
           {
             name: 'generate_image',
-            description: 'Generate images using Gemini or Imagen models. Returns the image inline and optionally saves to disk.',
+            description: 'Generate images using Gemini or Imagen models. Returns the image inline and optionally saves to disk. Use gemini-3-pro-image-preview (Nano Banana Pro) for professional assets, high-fidelity text rendering, and complex multi-reference compositions.',
             inputSchema: {
               type: 'object',
               properties: {
@@ -115,17 +115,27 @@ async function main() {
                 },
                 model: {
                   type: 'string',
-                  description: `Model to use (optional, defaults to "${DEFAULT_IMAGE_MODEL}"). Options: gemini-2.5-flash-image, gemini-3-pro-image-preview, imagen-4.0-generate-001, imagen-4.0-fast-generate-001`
+                  description: `Model to use (optional, defaults to "${DEFAULT_IMAGE_MODEL}"). Options: gemini-2.5-flash-image (Nano Banana - fast), gemini-3-pro-image-preview (Nano Banana Pro - highest quality, thinking, search grounding, multi-reference), imagen-4.0-generate-001, imagen-4.0-fast-generate-001`
                 },
                 aspect_ratio: {
                   type: 'string',
-                  description: 'Aspect ratio: "1:1", "16:9", "9:16", "4:3", "3:4"',
-                  enum: ['1:1', '16:9', '9:16', '4:3', '3:4']
+                  description: 'Aspect ratio for the generated image',
+                  enum: [...ALL_ASPECT_RATIOS]
                 },
                 resolution: {
                   type: 'string',
-                  description: 'Image resolution: "1K", "2K", "4K" (Gemini models only)',
+                  description: 'Image resolution: "1K", "2K", "4K" (Gemini models only, Pro supports all three)',
                   enum: ['1K', '2K', '4K']
+                },
+                use_search_grounding: {
+                  type: 'boolean',
+                  description: 'Enable Google Search grounding for reference-accurate generation (Nano Banana Pro only). Useful for real landmarks, products, or factual imagery.'
+                },
+                reference_image_paths: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Absolute paths to reference images (up to 14) for style/content guidance (Nano Banana Pro only)',
+                  maxItems: 14
                 },
                 save_path: {
                   type: 'string',
@@ -155,8 +165,8 @@ async function main() {
                 },
                 aspect_ratio: {
                   type: 'string',
-                  description: 'Aspect ratio for output: "1:1", "16:9", "9:16", "4:3", "3:4"',
-                  enum: ['1:1', '16:9', '9:16', '4:3', '3:4']
+                  description: 'Aspect ratio for the edited image',
+                  enum: [...ALL_ASPECT_RATIOS]
                 },
                 resolution: {
                   type: 'string',
@@ -432,15 +442,39 @@ async function main() {
               model: z.string().optional(),
               aspect_ratio: z.string().optional(),
               resolution: z.string().optional(),
+              use_search_grounding: z.boolean().optional(),
+              reference_image_paths: z.array(z.string()).max(14).optional(),
               save_path: z.string().optional()
             });
             const input = schema.parse(args);
             const model = input.model || DEFAULT_IMAGE_MODEL;
 
+            // Load reference images if provided
+            let referenceImages: Array<{ data: string; mimeType: string }> | undefined;
+            if (input.reference_image_paths?.length) {
+              referenceImages = [];
+              for (const refPath of input.reference_image_paths) {
+                const resolved = path.resolve(refPath);
+                if (!fs.existsSync(resolved)) {
+                  return {
+                    content: [{ type: 'text', text: `Reference image not found: ${resolved}` }],
+                    isError: true
+                  };
+                }
+                const buf = fs.readFileSync(resolved);
+                referenceImages.push({
+                  data: buf.toString('base64'),
+                  mimeType: getMimeType(resolved)
+                });
+              }
+            }
+
             const result = await client.generateImage(model, input.prompt, {
               aspectRatio: input.aspect_ratio,
               resolution: input.resolution,
-              systemPrompt: IMAGE_GENERATION_PROMPT
+              systemPrompt: IMAGE_GENERATION_PROMPT,
+              useSearchGrounding: input.use_search_grounding,
+              referenceImages
             });
 
             if (result.images.length === 0) {
@@ -463,8 +497,11 @@ async function main() {
               mimeType: image.mimeType
             });
 
-            // Add text with save path and any model text
+            // Add text with save path, thinking output, and model text
             let textParts = [`Image saved to: ${savedTo}`];
+            if (result.thinking) {
+              textParts.push(`\n\n**Thinking:**\n${result.thinking}`);
+            }
             if (result.text) {
               textParts.push(`\nModel notes: ${result.text}`);
             }

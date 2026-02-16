@@ -1,6 +1,6 @@
 import { GoogleGenAI, type Part } from '@google/genai';
 import * as path from 'path';
-import { Config, GEMINI_3_MODELS } from './config.js';
+import { Config, GEMINI_3_MODELS, NANO_BANANA_PRO_MODEL } from './config.js';
 
 export interface ImageResult {
   data: string;       // base64-encoded image bytes
@@ -9,6 +9,7 @@ export interface ImageResult {
 
 export interface GenerateImageResponse {
   text?: string;
+  thinking?: string;
   images: ImageResult[];
 }
 
@@ -90,6 +91,8 @@ export class GeminiClient {
       aspectRatio?: string;
       resolution?: string;
       systemPrompt?: string;
+      useSearchGrounding?: boolean;
+      referenceImages?: Array<{ data: string; mimeType: string }>;
     }
   ): Promise<GenerateImageResponse> {
     const isImagenModel = model.startsWith('imagen-');
@@ -415,28 +418,48 @@ export class GeminiClient {
       aspectRatio?: string;
       resolution?: string;
       systemPrompt?: string;
+      useSearchGrounding?: boolean;
+      referenceImages?: Array<{ data: string; mimeType: string }>;
     }
   ): Promise<GenerateImageResponse> {
     try {
+      const isProModel = model === NANO_BANANA_PRO_MODEL;
+
+      // Build contents: text prompt + optional reference images
+      let contents: string | Part[];
+      if (options?.referenceImages?.length) {
+        const parts: Part[] = [{ text: prompt }];
+        for (const ref of options.referenceImages) {
+          parts.push({ inlineData: { data: ref.data, mimeType: ref.mimeType } });
+        }
+        contents = parts;
+      } else {
+        contents = prompt;
+      }
+
+      // Build config
+      const config: any = {
+        responseModalities: ['TEXT', 'IMAGE'],
+        systemInstruction: options?.systemPrompt,
+      };
+
+      if (options?.aspectRatio || options?.resolution) {
+        config.imageConfig = {
+          ...(options.aspectRatio && { aspectRatio: options.aspectRatio }),
+          ...(options.resolution && { imageSize: options.resolution }),
+        };
+      }
+
+      // Google Search grounding (Nano Banana Pro only)
+      if (options?.useSearchGrounding && isProModel) {
+        config.tools = [{ googleSearch: {} }];
+      }
+
+      const timeoutMultiplier = isProModel ? 5 : 3;
       const response = await Promise.race([
-        this.ai.models.generateContent({
-          model,
-          contents: prompt,
-          config: {
-            responseModalities: ['TEXT', 'IMAGE'],
-            systemInstruction: options?.systemPrompt,
-            ...(options?.aspectRatio || options?.resolution
-              ? {
-                  imageConfig: {
-                    ...(options.aspectRatio && { aspectRatio: options.aspectRatio }),
-                    ...(options.resolution && { imageSize: options.resolution })
-                  }
-                }
-              : {})
-          }
-        }),
+        this.ai.models.generateContent({ model, contents, config }),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Request timeout')), this.timeout * 3)
+          setTimeout(() => reject(new Error('Request timeout')), this.timeout * timeoutMultiplier)
         )
       ]);
 
@@ -497,7 +520,10 @@ export class GeminiClient {
     }
 
     for (const part of parts) {
-      if (part.text) {
+      if (part.thought && part.text) {
+        // Thinking output from Nano Banana Pro
+        result.thinking = (result.thinking || '') + part.text;
+      } else if (part.text) {
         result.text = (result.text || '') + part.text;
       }
       if (part.inlineData?.data) {

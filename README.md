@@ -257,13 +257,15 @@ Get clear explanations using Gemini 3 Flash.
 
 ### generate_image
 
-Generate images from text prompts. Returns the image inline and saves to disk.
+Generate images from text prompts. Returns the image inline and saves to disk. Use Nano Banana Pro (`gemini-3-pro-image-preview`) for professional assets, high-fidelity text rendering, and complex multi-reference compositions.
 
 **Parameters:**
 - `prompt` (string, required) - Image generation prompt
-- `model` (string, optional) - Defaults to `gemini-2.5-flash-image`. Options: `gemini-3-pro-image-preview`, `imagen-4.0-generate-001`, `imagen-4.0-fast-generate-001`
-- `aspect_ratio` (string, optional) - `"1:1"`, `"16:9"`, `"9:16"`, `"4:3"`, `"3:4"`
-- `resolution` (string, optional) - `"1K"`, `"2K"`, `"4K"` (Gemini models only)
+- `model` (string, optional) - Defaults to `gemini-2.5-flash-image` (Nano Banana). Options: `gemini-3-pro-image-preview` (Nano Banana Pro), `imagen-4.0-generate-001`, `imagen-4.0-fast-generate-001`
+- `aspect_ratio` (string, optional) - `"1:1"`, `"2:3"`, `"3:2"`, `"3:4"`, `"4:3"`, `"4:5"`, `"5:4"`, `"9:16"`, `"16:9"`, `"21:9"`
+- `resolution` (string, optional) - `"1K"`, `"2K"`, `"4K"` (Gemini models only, Pro supports all three)
+- `use_search_grounding` (boolean, optional) - Enable Google Search grounding for reference-accurate generation (Nano Banana Pro only)
+- `reference_image_paths` (string[], optional) - Absolute paths to reference images for style/content guidance, up to 14 (Nano Banana Pro only)
 - `save_path` (string, optional) - File path to save the image
 
 ### edit_image
@@ -274,7 +276,7 @@ Edit an existing image using natural language instructions.
 - `prompt` (string, required) - Edit instructions
 - `image_path` (string, required) - Absolute path to the source image
 - `model` (string, optional) - Defaults to `gemini-2.5-flash-image`
-- `aspect_ratio` (string, optional) - `"1:1"`, `"16:9"`, `"9:16"`, `"4:3"`, `"3:4"`
+- `aspect_ratio` (string, optional) - `"1:1"`, `"2:3"`, `"3:2"`, `"3:4"`, `"4:3"`, `"4:5"`, `"5:4"`, `"9:16"`, `"16:9"`, `"21:9"`
 - `resolution` (string, optional) - `"1K"`, `"2K"`, `"4K"`
 - `save_path` (string, optional) - File path to save the edited image
 
@@ -293,8 +295,8 @@ Edit an existing image using natural language instructions.
 ### Image Models
 | Model | Best For |
 |-------|----------|
-| `gemini-2.5-flash-image` | Default — fast text+image generation and editing |
-| `gemini-3-pro-image-preview` | Pro-quality image generation |
+| `gemini-2.5-flash-image` | Default (Nano Banana) — fast text+image generation and editing |
+| `gemini-3-pro-image-preview` | Nano Banana Pro — highest quality, thinking, search grounding, up to 14 reference images, 4K output |
 | `imagen-4.0-generate-001` | High-quality image generation |
 | `imagen-4.0-fast-generate-001` | Fast image generation |
 

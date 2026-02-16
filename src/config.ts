@@ -11,8 +11,9 @@ export const SUPPORTED_MODELS = [
   'gemini-2.5-pro',
   'gemini-3-flash-preview',
   'gemini-3-pro-preview',
-  // Image-capable text+image models
-  'gemini-2.5-flash-preview-native-audio-dialog',
+  // Image-capable text+image models (Nano Banana / Nano Banana Pro)
+  'gemini-2.5-flash-image',
+  'gemini-3-pro-image-preview',
   // Imagen models
   'imagen-4.0-generate-001',
   'imagen-4.0-fast-generate-001'
@@ -28,6 +29,12 @@ export const IMAGE_CAPABLE_MODELS = [
   'gemini-3-pro-image-preview',
   'imagen-4.0-generate-001',
   'imagen-4.0-fast-generate-001'
+] as const;
+
+export const NANO_BANANA_PRO_MODEL = 'gemini-3-pro-image-preview';
+
+export const ALL_ASPECT_RATIOS = [
+  '1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'
 ] as const;
 
 export function loadConfig(): Config {
