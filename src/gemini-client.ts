@@ -7,33 +7,43 @@ export interface ImageResult {
   mimeType: string;   // e.g. 'image/png'
 }
 
+export interface GenerateResponse {
+  text: string;
+  modelVersion?: string;
+}
+
 export interface GenerateImageResponse {
   text?: string;
   thinking?: string;
   images: ImageResult[];
+  modelVersion?: string;
 }
 
 export interface SearchWebResponse {
   text: string;
   citations: Array<{ title: string; uri: string }>;
   searchQueries: string[];
+  modelVersion?: string;
 }
 
 export interface ThinkingResponse {
   text: string;
   thinking: string;
   thinkingTokens?: number;
+  modelVersion?: string;
 }
 
 export interface CodeExecutionResponse {
   text: string;
   code: string;
   output: string;
+  modelVersion?: string;
 }
 
 export interface UrlContextResponse {
   text: string;
   urlMetadata: Array<{ url: string; status: string }>;
+  modelVersion?: string;
 }
 
 export interface MapsResponse {
@@ -45,11 +55,18 @@ export interface MapsResponse {
     text?: string;
   }>;
   searchQueries: string[];
+  modelVersion?: string;
 }
 
 export interface FileUploadResponse {
   text: string;
   fileName: string;
+  modelVersion?: string;
+}
+
+export interface AnalyzeResponse {
+  text: string;
+  modelVersion?: string;
 }
 
 export class GeminiClient {
@@ -65,7 +82,7 @@ export class GeminiClient {
     model: string,
     prompt: string,
     systemPrompt?: string
-  ): Promise<string> {
+  ): Promise<GenerateResponse> {
     try {
       const response = await Promise.race([
         this.ai.models.generateContent({
@@ -78,7 +95,7 @@ export class GeminiClient {
         )
       ]);
 
-      return response.text ?? '';
+      return { text: response.text ?? '', modelVersion: (response as any).modelVersion };
     } catch (error: any) {
       throw this.handleError(error);
     }
@@ -154,21 +171,16 @@ export class GeminiClient {
     prompt: string,
     options?: {
       systemPrompt?: string;
-      excludeDomains?: string[];
     }
   ): Promise<SearchWebResponse> {
     try {
-      const googleSearch: any = options?.excludeDomains?.length
-        ? { excludeDomains: options.excludeDomains }
-        : {};
-
       const response = await Promise.race([
         this.ai.models.generateContent({
           model,
           contents: prompt,
           config: {
             systemInstruction: options?.systemPrompt,
-            tools: [{ googleSearch }]
+            tools: [{ googleSearch: {} }]
           }
         }),
         new Promise<never>((_, reject) =>
@@ -199,7 +211,12 @@ export class GeminiClient {
       };
 
       if (isGemini3) {
-        thinkingConfig.thinkingLevel = (options?.thinkingLevel || 'HIGH').toUpperCase();
+        let level = (options?.thinkingLevel || 'high').toLowerCase();
+        // Gemini 3.1 Pro does not support 'minimal' — silently bump to 'low'.
+        if (level === 'minimal' && /3\.1-pro/.test(model)) {
+          level = 'low';
+        }
+        thinkingConfig.thinkingLevel = level;
       } else {
         thinkingConfig.thinkingBudget = options?.thinkingBudget ?? 8192;
       }
@@ -284,7 +301,7 @@ export class GeminiClient {
     prompt: string,
     imageBase64: string,
     mimeType: string
-  ): Promise<string> {
+  ): Promise<AnalyzeResponse> {
     try {
       const contents: Part[] = [
         { inlineData: { data: imageBase64, mimeType } },
@@ -301,7 +318,7 @@ export class GeminiClient {
         )
       ]);
 
-      return response.text ?? '';
+      return { text: response.text ?? '', modelVersion: (response as any).modelVersion };
     } catch (error: any) {
       throw this.handleError(error);
     }
@@ -361,7 +378,8 @@ export class GeminiClient {
 
       return {
         text: response.text ?? '',
-        fileName: uploadResult.name
+        fileName: uploadResult.name,
+        modelVersion: (response as any).modelVersion
       };
     } catch (error: any) {
       throw this.handleError(error);
@@ -512,7 +530,7 @@ export class GeminiClient {
   }
 
   private extractImageResponse(response: any): GenerateImageResponse {
-    const result: GenerateImageResponse = { images: [] };
+    const result: GenerateImageResponse = { images: [], modelVersion: response.modelVersion };
 
     const parts = response.candidates?.[0]?.content?.parts;
     if (!parts) {
@@ -560,7 +578,7 @@ export class GeminiClient {
       }
     }
 
-    return { text, citations, searchQueries };
+    return { text, citations, searchQueries, modelVersion: response.modelVersion };
   }
 
   private extractThinkingResponse(response: any): ThinkingResponse {
@@ -578,7 +596,7 @@ export class GeminiClient {
 
     const thinkingTokens = response.usageMetadata?.thoughtsTokenCount;
 
-    return { text, thinking, thinkingTokens };
+    return { text, thinking, thinkingTokens, modelVersion: response.modelVersion };
   }
 
   private extractCodeExecutionResponse(response: any): CodeExecutionResponse {
@@ -597,7 +615,7 @@ export class GeminiClient {
       }
     }
 
-    return { text, code, output };
+    return { text, code, output, modelVersion: response.modelVersion };
   }
 
   private extractUrlContextResponse(response: any): UrlContextResponse {
@@ -614,7 +632,7 @@ export class GeminiClient {
       }
     }
 
-    return { text, urlMetadata };
+    return { text, urlMetadata, modelVersion: response.modelVersion };
   }
 
   private extractMapsResponse(response: any): MapsResponse {
@@ -642,7 +660,7 @@ export class GeminiClient {
       }
     }
 
-    return { text, places, searchQueries };
+    return { text, places, searchQueries, modelVersion: response.modelVersion };
   }
 
   private inferMimeType(filePath: string): string {

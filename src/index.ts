@@ -9,14 +9,19 @@ import {
 import { z } from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
-import { loadConfig, NANO_BANANA_PRO_MODEL, ALL_ASPECT_RATIOS } from './config.js';
+import { loadConfig, ALL_ASPECT_RATIOS, ALL_RESOLUTIONS } from './config.js';
 import { createGeminiClient } from './gemini-client.js';
 import {
   BRAINSTORM_PROMPT, CODE_REVIEW_PROMPT, EXPLAIN_PROMPT, IMAGE_GENERATION_PROMPT,
   SEARCH_WEB_PROMPT, CODE_EXECUTION_PROMPT, URL_CONTEXT_PROMPT, GOOGLE_MAPS_PROMPT
 } from './prompts.js';
 
-const DEFAULT_IMAGE_MODEL = 'gemini-2.5-flash-image';
+const DEFAULT_IMAGE_MODEL = 'gemini-3.1-flash-image-preview';
+
+function modelFooter(modelVersion: string | undefined, requestedModel: string): string {
+  const reported = modelVersion || requestedModel;
+  return `\n\n---\n*Model: \`${reported}\`*`;
+}
 
 async function main() {
   try {
@@ -55,7 +60,7 @@ async function main() {
                 },
                 model: {
                   type: 'string',
-                  description: 'Model identifier (optional, defaults to gemini-2.5-flash)'
+                  description: 'Model identifier (optional, defaults to gemini-3.1-pro-preview, overridable via GEMINI_DEFAULT_MODEL)'
                 }
               },
               required: ['prompt']
@@ -63,7 +68,7 @@ async function main() {
           },
           {
             name: 'brainstorm',
-            description: 'Creative ideation and brainstorming assistant using Gemini 3 Pro for cutting-edge reasoning',
+            description: 'Creative ideation and brainstorming assistant using Gemini 3.1 Pro for cutting-edge reasoning',
             inputSchema: {
               type: 'object',
               properties: {
@@ -77,7 +82,7 @@ async function main() {
           },
           {
             name: 'code_review',
-            description: 'Thorough code analysis and review using Gemini 2.5 Pro for high-quality analysis',
+            description: 'Thorough code analysis and review using Gemini 3.1 Pro for high-quality analysis',
             inputSchema: {
               type: 'object',
               properties: {
@@ -91,7 +96,7 @@ async function main() {
           },
           {
             name: 'explain',
-            description: 'Clear explanations of concepts, code, or technical topics using Gemini 3 Flash for fast, modern explanations',
+            description: 'Clear explanations of concepts, code, or technical topics using Gemini 3.1 Pro',
             inputSchema: {
               type: 'object',
               properties: {
@@ -105,7 +110,7 @@ async function main() {
           },
           {
             name: 'generate_image',
-            description: 'Generate images using Gemini or Imagen models. Returns the image inline and optionally saves to disk. Use gemini-3-pro-image-preview (Nano Banana Pro) for professional assets, high-fidelity text rendering, and complex multi-reference compositions.',
+            description: 'Generate images using Gemini or Imagen models. Returns the image inline and optionally saves to disk. Use gemini-3-pro-image-preview (Nano Banana Pro) for professional assets, high-fidelity text rendering, and complex multi-reference compositions. Use gemini-3.1-flash-image-preview (Nano Banana 2) for an efficient default.',
             inputSchema: {
               type: 'object',
               properties: {
@@ -115,7 +120,7 @@ async function main() {
                 },
                 model: {
                   type: 'string',
-                  description: `Model to use (optional, defaults to "${DEFAULT_IMAGE_MODEL}"). Options: gemini-2.5-flash-image (Nano Banana - fast), gemini-3-pro-image-preview (Nano Banana Pro - highest quality, thinking, search grounding, multi-reference), imagen-4.0-generate-001, imagen-4.0-fast-generate-001`
+                  description: `Model to use (optional, defaults to "${DEFAULT_IMAGE_MODEL}"). Options: gemini-2.5-flash-image (Nano Banana - fast), gemini-3.1-flash-image-preview (Nano Banana 2 - efficient default), gemini-3-pro-image-preview (Nano Banana Pro - highest quality, thinking, search grounding, multi-reference), imagen-4.0-generate-001, imagen-4.0-fast-generate-001`
                 },
                 aspect_ratio: {
                   type: 'string',
@@ -124,8 +129,8 @@ async function main() {
                 },
                 resolution: {
                   type: 'string',
-                  description: 'Image resolution: "1K", "2K", "4K" (Gemini models only, Pro supports all three)',
-                  enum: ['1K', '2K', '4K']
+                  description: 'Image resolution. "512" is Nano Banana 2 only (fastest); "1K"/"2K"/"4K" supported by all Gemini image models.',
+                  enum: [...ALL_RESOLUTIONS]
                 },
                 use_search_grounding: {
                   type: 'boolean',
@@ -170,8 +175,8 @@ async function main() {
                 },
                 resolution: {
                   type: 'string',
-                  description: 'Image resolution: "1K", "2K", "4K"',
-                  enum: ['1K', '2K', '4K']
+                  description: 'Image resolution. "512" is Nano Banana 2 only; "1K"/"2K"/"4K" supported by all Gemini image models.',
+                  enum: [...ALL_RESOLUTIONS]
                 },
                 save_path: {
                   type: 'string',
@@ -193,14 +198,8 @@ async function main() {
                 },
                 model: {
                   type: 'string',
-                  description: 'Model identifier (optional, defaults to gemini-2.5-flash)'
+                  description: 'Model identifier (optional, defaults to gemini-3.1-pro-preview, overridable via GEMINI_DEFAULT_MODEL)'
                 },
-                excluded_domains: {
-                  type: 'array',
-                  items: { type: 'string' },
-                  description: 'Exclude these domains from search (max 5)',
-                  maxItems: 5
-                }
               },
               required: ['query']
             }
@@ -217,11 +216,11 @@ async function main() {
                 },
                 model: {
                   type: 'string',
-                  description: 'Model identifier (optional, defaults to gemini-2.5-flash). All Gemini 2.5 and 3 models support thinking.'
+                  description: 'Model identifier (optional, defaults to gemini-3.1-pro-preview, overridable via GEMINI_DEFAULT_MODEL). All Gemini 2.5 and 3 models support thinking.'
                 },
                 thinking_level: {
                   type: 'string',
-                  description: 'Thinking intensity: "minimal", "low", "medium", "high" (default: "high")',
+                  description: 'Thinking intensity (Gemini 3.x models): "minimal" (Flash/Flash-Lite only — silently bumped to "low" on Pro), "low", "medium", "high" (default).',
                   enum: ['minimal', 'low', 'medium', 'high']
                 },
                 thinking_budget: {
@@ -244,7 +243,7 @@ async function main() {
                 },
                 model: {
                   type: 'string',
-                  description: 'Model identifier (optional, defaults to gemini-2.5-flash)'
+                  description: 'Model identifier (optional, defaults to gemini-3.1-pro-preview, overridable via GEMINI_DEFAULT_MODEL)'
                 }
               },
               required: ['prompt']
@@ -268,7 +267,7 @@ async function main() {
                 },
                 model: {
                   type: 'string',
-                  description: 'Model identifier (optional, defaults to gemini-2.5-flash)'
+                  description: 'Model identifier (optional, defaults to gemini-3.1-pro-preview, overridable via GEMINI_DEFAULT_MODEL)'
                 }
               },
               required: ['prompt', 'urls']
@@ -291,7 +290,7 @@ async function main() {
                 },
                 model: {
                   type: 'string',
-                  description: 'Model identifier (optional, defaults to gemini-2.5-flash)'
+                  description: 'Model identifier (optional, defaults to gemini-3.1-pro-preview, overridable via GEMINI_DEFAULT_MODEL)'
                 }
               },
               required: ['image_path']
@@ -313,7 +312,7 @@ async function main() {
                 },
                 model: {
                   type: 'string',
-                  description: 'Model identifier (optional, defaults to gemini-2.5-flash)'
+                  description: 'Model identifier (optional, defaults to gemini-3.1-pro-preview, overridable via GEMINI_DEFAULT_MODEL)'
                 }
               },
               required: ['file_path']
@@ -339,7 +338,7 @@ async function main() {
                 },
                 model: {
                   type: 'string',
-                  description: 'Model identifier (optional, defaults to gemini-2.5-flash)'
+                  description: 'Model identifier (optional, defaults to gemini-3.1-pro-preview, overridable via GEMINI_DEFAULT_MODEL)'
                 }
               },
               required: ['query']
@@ -396,7 +395,7 @@ async function main() {
             const model = input.model || config.defaultModel;
             const response = await client.generate(model, input.prompt);
             return {
-              content: [{ type: 'text', text: response }]
+              content: [{ type: 'text', text: response.text + modelFooter(response.modelVersion, model) }]
             };
           }
 
@@ -406,9 +405,9 @@ async function main() {
             });
             const input = schema.parse(args);
             const prompt = `Brainstorm ideas about: ${input.topic}`;
-            const response = await client.generate('gemini-3-pro-preview', prompt, BRAINSTORM_PROMPT);
+            const response = await client.generate('gemini-3.1-pro-preview', prompt, BRAINSTORM_PROMPT);
             return {
-              content: [{ type: 'text', text: response }]
+              content: [{ type: 'text', text: response.text + modelFooter(response.modelVersion, 'gemini-3.1-pro-preview') }]
             };
           }
 
@@ -418,9 +417,9 @@ async function main() {
             });
             const input = schema.parse(args);
             const prompt = `Review this code:\n\n${input.code}`;
-            const response = await client.generate('gemini-2.5-pro', prompt, CODE_REVIEW_PROMPT);
+            const response = await client.generate('gemini-3.1-pro-preview', prompt, CODE_REVIEW_PROMPT);
             return {
-              content: [{ type: 'text', text: response }]
+              content: [{ type: 'text', text: response.text + modelFooter(response.modelVersion, 'gemini-3.1-pro-preview') }]
             };
           }
 
@@ -430,9 +429,9 @@ async function main() {
             });
             const input = schema.parse(args);
             const prompt = `Explain: ${input.concept}`;
-            const response = await client.generate('gemini-3-flash-preview', prompt, EXPLAIN_PROMPT);
+            const response = await client.generate('gemini-3.1-pro-preview', prompt, EXPLAIN_PROMPT);
             return {
-              content: [{ type: 'text', text: response }]
+              content: [{ type: 'text', text: response.text + modelFooter(response.modelVersion, 'gemini-3.1-pro-preview') }]
             };
           }
 
@@ -505,6 +504,7 @@ async function main() {
             if (result.text) {
               textParts.push(`\nModel notes: ${result.text}`);
             }
+            textParts.push(modelFooter(result.modelVersion, model));
             content.push({ type: 'text', text: textParts.join('') });
 
             return { content };
@@ -564,6 +564,7 @@ async function main() {
             if (result.text) {
               textParts.push(`\nModel notes: ${result.text}`);
             }
+            textParts.push(modelFooter(result.modelVersion, model));
             content.push({ type: 'text', text: textParts.join('') });
 
             return { content };
@@ -572,15 +573,13 @@ async function main() {
           case 'search_web': {
             const schema = z.object({
               query: z.string().min(1),
-              model: z.string().optional(),
-              excluded_domains: z.array(z.string()).max(5).optional()
+              model: z.string().optional()
             });
             const input = schema.parse(args);
             const model = input.model || config.defaultModel;
 
             const result = await client.searchWeb(model, input.query, {
-              systemPrompt: SEARCH_WEB_PROMPT,
-              excludeDomains: input.excluded_domains
+              systemPrompt: SEARCH_WEB_PROMPT
             });
 
             let responseText = result.text;
@@ -593,6 +592,7 @@ async function main() {
             if (result.searchQueries.length > 0) {
               responseText += `\n**Search queries:** ${result.searchQueries.join(', ')}`;
             }
+            responseText += modelFooter(result.modelVersion, model);
 
             return { content: [{ type: 'text', text: responseText }] };
           }
@@ -620,6 +620,7 @@ async function main() {
             if (result.thinkingTokens) {
               responseText += `\n\n---\n*Thinking tokens used: ${result.thinkingTokens}*`;
             }
+            responseText += modelFooter(result.modelVersion, model);
 
             return { content: [{ type: 'text', text: responseText }] };
           }
@@ -641,6 +642,7 @@ async function main() {
             if (result.output) {
               responseText += '\n\n**Output:**\n```\n' + result.output + '\n```';
             }
+            responseText += modelFooter(result.modelVersion, model);
 
             return { content: [{ type: 'text', text: responseText }] };
           }
@@ -664,6 +666,7 @@ async function main() {
                 responseText += `- ${meta.url}: ${statusIcon}\n`;
               }
             }
+            responseText += modelFooter(result.modelVersion, model);
 
             return { content: [{ type: 'text', text: responseText }] };
           }
@@ -692,7 +695,7 @@ async function main() {
 
             const response = await client.analyzeImage(model, prompt, imageBase64, mimeType);
 
-            return { content: [{ type: 'text', text: response }] };
+            return { content: [{ type: 'text', text: response.text + modelFooter(response.modelVersion, model) }] };
           }
 
           case 'upload_file': {
@@ -716,6 +719,7 @@ async function main() {
 
             let responseText = result.text;
             responseText += `\n\n---\n*File: ${result.fileName}*`;
+            responseText += modelFooter(result.modelVersion, model);
 
             return { content: [{ type: 'text', text: responseText }] };
           }
@@ -746,6 +750,7 @@ async function main() {
                 responseText += '\n';
               }
             }
+            responseText += modelFooter(result.modelVersion, model);
 
             return { content: [{ type: 'text', text: responseText }] };
           }
@@ -766,7 +771,7 @@ async function main() {
     await server.connect(transport);
 
     // Log startup message to stderr (stdout is used for MCP protocol)
-    console.error('Gemini MCP Server v3.0.0 running');
+    console.error('Gemini MCP Server v3.2.0 running');
 
     // Handle graceful shutdown
     process.on('SIGINT', async () => {
