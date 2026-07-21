@@ -256,16 +256,16 @@ Get clear explanations using Gemini 3.1 Pro.
 
 ### generate_image
 
-Generate images from text prompts. Returns the image inline and saves to disk. The default is Nano Banana 2 (`gemini-3.1-flash-image-preview`) for fast, high-quality 4K generation. Use Nano Banana Pro (`gemini-3-pro-image-preview`) when you need maximum quality on complex multi-reference compositions or factually grounded imagery.
+Generate images from text prompts. Returns the image inline and saves to disk. The default is Nano Banana 2 (`gemini-3.1-flash-image`) for fast, high-quality 4K generation. Use Nano Banana Pro (`gemini-3-pro-image`) when you need maximum quality on complex multi-reference compositions or factually grounded imagery.
 
 **Parameters:**
 - `prompt` (string, required) - Image generation prompt
-- `model` (string, optional) - Defaults to `gemini-3.1-flash-image-preview` (Nano Banana 2). Options: `gemini-2.5-flash-image` (original Nano Banana), `gemini-3-pro-image-preview` (Nano Banana Pro), `imagen-4.0-generate-001`, `imagen-4.0-fast-generate-001`
+- `model` (string, optional) - Defaults to `gemini-3.1-flash-image` (Nano Banana 2). Options: `gemini-2.5-flash-image` (original Nano Banana), `gemini-3-pro-image` (Nano Banana Pro), `imagen-4.0-generate-001`, `imagen-4.0-fast-generate-001`
 - `aspect_ratio` (string, optional) - `"1:1"`, `"2:3"`, `"3:2"`, `"3:4"`, `"4:3"`, `"4:5"`, `"5:4"`, `"9:16"`, `"16:9"`, `"21:9"`, plus narrow formats `"1:4"`, `"4:1"`, `"1:8"`, `"8:1"` (Nano Banana 2 only)
 - `resolution` (string, optional) - `"1K"`, `"2K"`, `"4K"` (all Gemini image models); `"512"` (Nano Banana 2 only, fastest)
 - `use_search_grounding` (boolean, optional) - Enable Google Search grounding for reference-accurate generation (Nano Banana Pro only)
 - `reference_image_paths` (string[], optional) - Absolute paths to reference images for style/content guidance, up to 14 (Nano Banana 2 and Nano Banana Pro)
-- `save_path` (string, optional) - File path to save the image
+- `save_path` (string, optional) - Path to save the image, relative to `GEMINI_OUTPUT_DIR`. Paths that escape the output directory are rejected.
 
 ### edit_image
 
@@ -274,10 +274,10 @@ Edit an existing image using natural language instructions.
 **Parameters:**
 - `prompt` (string, required) - Edit instructions
 - `image_path` (string, required) - Absolute path to the source image
-- `model` (string, optional) - Defaults to `gemini-3.1-flash-image-preview` (Nano Banana 2)
+- `model` (string, optional) - Defaults to `gemini-3.1-flash-image` (Nano Banana 2)
 - `aspect_ratio` (string, optional) - Same options as `generate_image` (standard ratios + Nano Banana 2 narrow formats)
 - `resolution` (string, optional) - `"1K"`, `"2K"`, `"4K"`; `"512"` on Nano Banana 2 only
-- `save_path` (string, optional) - File path to save the edited image
+- `save_path` (string, optional) - Path to save the edited image, relative to `GEMINI_OUTPUT_DIR`. Paths that escape the output directory are rejected.
 
 ---
 
@@ -289,17 +289,26 @@ Edit an existing image using natural language instructions.
 | `gemini-2.5-flash` | Fast and cost-effective |
 | `gemini-2.5-pro` | High-quality reasoning and analysis |
 | `gemini-3-flash-preview` | Latest Flash with cutting-edge capabilities |
-| `gemini-3.1-pro-preview` | **Default** — maximum quality for complex tasks (replaces `gemini-3-pro-preview`, shut down 2026-03-09) |
+| `gemini-3.1-pro-preview` | **Default** — maximum quality for complex tasks (replaces `gemini-3-pro-preview`, deprecated but still served) |
 | `gemini-3.1-flash-lite` | Cheapest, fastest text option (GA May 2026) |
+| `gemini-3.5-flash` | Newest Flash generation — strong reasoning at Flash cost |
+| `gemini-pro-latest` | Floating alias — currently `gemini-3.1-pro-preview` |
+| `gemini-flash-latest` | Floating alias — currently `gemini-3.5-flash` |
+| `gemini-flash-lite-latest` | Floating alias — currently `gemini-3.1-flash-lite` |
 
 ### Image Models
 | Model | Best For |
 |-------|----------|
 | `gemini-2.5-flash-image` | Original Nano Banana — fast text+image generation and editing |
-| `gemini-3.1-flash-image-preview` | **Default** — Nano Banana 2, efficient successor to Nano Banana; native 4K, up to 14 reference images, narrow aspect ratios, optional thinking |
-| `gemini-3-pro-image-preview` | Nano Banana Pro — highest quality, full thinking, search grounding, up to 14 reference images, 4K output |
+| `gemini-3.1-flash-image` | **Default** — Nano Banana 2, efficient successor to Nano Banana; native 4K, up to 14 reference images, narrow aspect ratios, optional thinking |
+| `gemini-3-pro-image` | Nano Banana Pro — highest quality, full thinking, search grounding, up to 14 reference images, 4K output |
 | `imagen-4.0-generate-001` | High-quality image generation |
 | `imagen-4.0-fast-generate-001` | Fast image generation |
+| `imagen-4.0-ultra-generate-001` | Highest-fidelity Imagen tier |
+
+The `-preview` ids these GA aliases replaced (`gemini-3.1-flash-image-preview`, `gemini-3-pro-image-preview`) are still accepted, as is the `nano-banana-pro-preview` alias.
+
+Options are validated against the resolved model: `512` resolution and the narrow aspect ratios are Nano Banana 2 only, reference images require a Gemini image model (not Imagen), and search grounding is Nano Banana Pro only. An unsupported combination fails locally with a specific message rather than being silently dropped.
 
 ---
 
@@ -310,9 +319,26 @@ Edit an existing image using natural language instructions.
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `GEMINI_API_KEY` | Yes | — | Google AI API key |
-| `GEMINI_DEFAULT_MODEL` | No | `gemini-3.1-pro-preview` | Default model for text tools |
+| `GEMINI_DEFAULT_MODEL` | No | `gemini-3.1-pro-preview` | Default model for text tools (must be a text model) |
 | `GEMINI_TIMEOUT` | No | `60000` | API timeout in ms |
-| `GEMINI_OUTPUT_DIR` | No | `./generated-images` | Directory for auto-saved images |
+| `GEMINI_OUTPUT_DIR` | No | `./generated-images` | Directory for saved images, and the boundary `save_path` is confined to |
+| `GEMINI_ALLOW_UNLISTED_MODELS` | No | `false` | Set to `true` to pass model ids not in the tables above straight through to the API |
+| `GEMINI_MAX_FILE_BYTES` | No | `50331648` (48MB) | Ceiling for files read for upload or image analysis |
+
+Model ids are validated against the tables above, so a typo fails fast with the list of valid options instead of surfacing as an API error. When Google ships a model this server does not know about yet, set `GEMINI_ALLOW_UNLISTED_MODELS=true` to skip the check.
+
+#### Where images are written
+
+`GEMINI_OUTPUT_DIR` is both the destination for auto-named images and the security boundary for `save_path`: a `save_path` is resolved relative to it, and any path that escapes it (`../../etc`, or an absolute path elsewhere) is refused. Subdirectories are fine and created on demand — `save_path: "icons/logo.png"` writes to `<output dir>/icons/logo.png`.
+
+The default `./generated-images` is **relative**, so it resolves against the server process's working directory — which for an MCP server is wherever the client launched it, not necessarily your project. Set an absolute path to pin it:
+
+```text
+claude mcp add -s user gemini \
+  -e GEMINI_API_KEY=YOUR_API_KEY \
+  -e GEMINI_OUTPUT_DIR=/Users/you/gemini-images \
+  -- node /full/path/to/dist/index.js
+```
 
 ---
 
@@ -336,8 +362,8 @@ Every tool response includes a small footer reporting the exact model that handl
 | `analyze_image` | Vision (inlineData) | Configurable (`gemini-3.1-pro-preview`) |
 | `upload_file` | Files API + generateContent | Configurable (`gemini-3.1-pro-preview`) |
 | `google_maps` | Google Maps grounding | Configurable (`gemini-3.1-pro-preview`) |
-| `generate_image` | Image generation | `gemini-3.1-flash-image-preview` |
-| `edit_image` | Image editing | `gemini-3.1-flash-image-preview` |
+| `generate_image` | Image generation | `gemini-3.1-flash-image` |
+| `edit_image` | Image editing | `gemini-3.1-flash-image` |
 
 ---
 

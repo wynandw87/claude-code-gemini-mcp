@@ -4,23 +4,47 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
-  ListToolsRequestSchema
+  ListToolsRequestSchema,
+  McpError,
+  ErrorCode
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import * as fs from 'fs';
+import * as fsSync from 'fs';
+import * as fs from 'fs/promises';
 import * as path from 'path';
-import { loadConfig, ALL_ASPECT_RATIOS, ALL_RESOLUTIONS } from './config.js';
+import { fileURLToPath } from 'url';
+import {
+  loadConfig, assertSupportedModel, assertImageOptions,
+  ALL_ASPECT_RATIOS, ALL_RESOLUTIONS, MAX_FILE_BYTES,
+  DEFAULT_TEXT_MODEL, DEFAULT_IMAGE_MODEL
+} from './config.js';
 import { createGeminiClient } from './gemini-client.js';
 import {
   BRAINSTORM_PROMPT, CODE_REVIEW_PROMPT, EXPLAIN_PROMPT, IMAGE_GENERATION_PROMPT,
   SEARCH_WEB_PROMPT, CODE_EXECUTION_PROMPT, URL_CONTEXT_PROMPT, GOOGLE_MAPS_PROMPT
 } from './prompts.js';
 
-const DEFAULT_IMAGE_MODEL = 'gemini-3.1-flash-image-preview';
+// Single source of truth for the version reported over the MCP initialize
+// handshake, so it can't drift from the published package.
+function packageVersion(): string {
+  try {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(fsSync.readFileSync(path.join(here, '..', 'package.json'), 'utf8'));
+    return typeof pkg.version === 'string' ? pkg.version : '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
+const VERSION = packageVersion();
 
 function modelFooter(modelVersion: string | undefined, requestedModel: string): string {
   const reported = modelVersion || requestedModel;
   return `\n\n---\n*Model: \`${reported}\`*`;
+}
+
+function formatBytes(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
 async function main() {
@@ -35,7 +59,7 @@ async function main() {
     const server = new Server(
       {
         name: 'gemini-mcp-server',
-        version: '2.0.0'
+        version: VERSION
       },
       {
         capabilities: {
@@ -44,10 +68,7 @@ async function main() {
       }
     );
 
-    // Register tools/list handler
-    server.setRequestHandler(ListToolsRequestSchema, async () => {
-      return {
-        tools: [
+    const TOOLS = [
           {
             name: 'ask',
             description: 'Flexible, general-purpose interface to query any Gemini model',
@@ -60,7 +81,7 @@ async function main() {
                 },
                 model: {
                   type: 'string',
-                  description: 'Model identifier (optional, defaults to gemini-3.1-pro-preview, overridable via GEMINI_DEFAULT_MODEL)'
+                  description: `Model identifier (optional, defaults to ${DEFAULT_TEXT_MODEL}, overridable via GEMINI_DEFAULT_MODEL)`
                 }
               },
               required: ['prompt']
@@ -110,7 +131,7 @@ async function main() {
           },
           {
             name: 'generate_image',
-            description: 'Generate images using Gemini or Imagen models. Returns the image inline and optionally saves to disk. Use gemini-3-pro-image-preview (Nano Banana Pro) for professional assets, high-fidelity text rendering, and complex multi-reference compositions. Use gemini-3.1-flash-image-preview (Nano Banana 2) for an efficient default.',
+            description: 'Generate images using Gemini or Imagen models. Returns the image inline and optionally saves to disk. Use gemini-3-pro-image (Nano Banana Pro) for professional assets, high-fidelity text rendering, and complex multi-reference compositions. Use gemini-3.1-flash-image (Nano Banana 2) for an efficient default.',
             inputSchema: {
               type: 'object',
               properties: {
@@ -120,7 +141,7 @@ async function main() {
                 },
                 model: {
                   type: 'string',
-                  description: `Model to use (optional, defaults to "${DEFAULT_IMAGE_MODEL}"). Options: gemini-2.5-flash-image (Nano Banana - fast), gemini-3.1-flash-image-preview (Nano Banana 2 - efficient default), gemini-3-pro-image-preview (Nano Banana Pro - highest quality, thinking, search grounding, multi-reference), imagen-4.0-generate-001, imagen-4.0-fast-generate-001`
+                  description: `Model to use (optional, defaults to "${DEFAULT_IMAGE_MODEL}"). Options: gemini-2.5-flash-image (Nano Banana - fast), gemini-3.1-flash-image (Nano Banana 2 - efficient default), gemini-3-pro-image (Nano Banana Pro - highest quality, thinking, search grounding, multi-reference), imagen-4.0-generate-001, imagen-4.0-fast-generate-001, imagen-4.0-ultra-generate-001`
                 },
                 aspect_ratio: {
                   type: 'string',
@@ -139,7 +160,8 @@ async function main() {
                 reference_image_paths: {
                   type: 'array',
                   items: { type: 'string' },
-                  description: 'Absolute paths to reference images (up to 14) for style/content guidance (Nano Banana Pro only)',
+                  description: 'Absolute paths to reference images (up to 14) for style/content guidance (Gemini image models only — not Imagen)',
+                  minItems: 1,
                   maxItems: 14
                 },
                 save_path: {
@@ -198,7 +220,7 @@ async function main() {
                 },
                 model: {
                   type: 'string',
-                  description: 'Model identifier (optional, defaults to gemini-3.1-pro-preview, overridable via GEMINI_DEFAULT_MODEL)'
+                  description: `Model identifier (optional, defaults to ${DEFAULT_TEXT_MODEL}, overridable via GEMINI_DEFAULT_MODEL)`
                 },
               },
               required: ['query']
@@ -216,7 +238,7 @@ async function main() {
                 },
                 model: {
                   type: 'string',
-                  description: 'Model identifier (optional, defaults to gemini-3.1-pro-preview, overridable via GEMINI_DEFAULT_MODEL). All Gemini 2.5 and 3 models support thinking.'
+                  description: `Model identifier (optional, defaults to ${DEFAULT_TEXT_MODEL}, overridable via GEMINI_DEFAULT_MODEL). All Gemini 2.5 and 3.x models support thinking.`
                 },
                 thinking_level: {
                   type: 'string',
@@ -243,7 +265,7 @@ async function main() {
                 },
                 model: {
                   type: 'string',
-                  description: 'Model identifier (optional, defaults to gemini-3.1-pro-preview, overridable via GEMINI_DEFAULT_MODEL)'
+                  description: `Model identifier (optional, defaults to ${DEFAULT_TEXT_MODEL}, overridable via GEMINI_DEFAULT_MODEL)`
                 }
               },
               required: ['prompt']
@@ -262,12 +284,13 @@ async function main() {
                 urls: {
                   type: 'array',
                   items: { type: 'string' },
-                  description: 'URLs to fetch and analyze (max 20)',
+                  description: 'URLs to fetch and analyze (1-20)',
+                  minItems: 1,
                   maxItems: 20
                 },
                 model: {
                   type: 'string',
-                  description: 'Model identifier (optional, defaults to gemini-3.1-pro-preview, overridable via GEMINI_DEFAULT_MODEL)'
+                  description: `Model identifier (optional, defaults to ${DEFAULT_TEXT_MODEL}, overridable via GEMINI_DEFAULT_MODEL)`
                 }
               },
               required: ['prompt', 'urls']
@@ -290,7 +313,7 @@ async function main() {
                 },
                 model: {
                   type: 'string',
-                  description: 'Model identifier (optional, defaults to gemini-3.1-pro-preview, overridable via GEMINI_DEFAULT_MODEL)'
+                  description: `Model identifier (optional, defaults to ${DEFAULT_TEXT_MODEL}, overridable via GEMINI_DEFAULT_MODEL)`
                 }
               },
               required: ['image_path']
@@ -298,7 +321,7 @@ async function main() {
           },
           {
             name: 'upload_file',
-            description: 'Upload a document for Gemini to analyze. Supports: txt, md, py, js, csv, json, pdf, and more (max 48MB). Optionally ask a question about it immediately.',
+            description: `Upload a document for Gemini to analyze. Supports: txt, md, py, js, csv, json, pdf, and more (max ${formatBytes(MAX_FILE_BYTES)}). Optionally ask a question about it immediately. The remote copy is deleted once the query returns.`,
             inputSchema: {
               type: 'object',
               properties: {
@@ -312,7 +335,7 @@ async function main() {
                 },
                 model: {
                   type: 'string',
-                  description: 'Model identifier (optional, defaults to gemini-3.1-pro-preview, overridable via GEMINI_DEFAULT_MODEL)'
+                  description: `Model identifier (optional, defaults to ${DEFAULT_TEXT_MODEL}, overridable via GEMINI_DEFAULT_MODEL)`
                 }
               },
               required: ['file_path']
@@ -330,32 +353,87 @@ async function main() {
                 },
                 latitude: {
                   type: 'number',
-                  description: 'Optional latitude for location context'
+                  description: 'Optional latitude for location context',
+                  minimum: -90,
+                  maximum: 90
                 },
                 longitude: {
                   type: 'number',
-                  description: 'Optional longitude for location context'
+                  description: 'Optional longitude for location context',
+                  minimum: -180,
+                  maximum: 180
                 },
                 model: {
                   type: 'string',
-                  description: 'Model identifier (optional, defaults to gemini-3.1-pro-preview, overridable via GEMINI_DEFAULT_MODEL)'
+                  description: `Model identifier (optional, defaults to ${DEFAULT_TEXT_MODEL}, overridable via GEMINI_DEFAULT_MODEL)`
                 }
               },
               required: ['query']
             }
           }
-        ]
-      };
-    });
+    ];
+
+    // Derived from the same array the client sees, so the dispatch guard can't
+    // drift from the advertised tool list.
+    const TOOL_NAMES = new Set(TOOLS.map(t => t.name));
+
+    // Register tools/list handler
+    server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
+
+    const outputRoot = path.resolve(config.outputDir);
+
+    // Helper: pick the model for a call and reject ids this server can't route
+    function resolveModel(requested: string | undefined, imageOnly = false): string {
+      const model = requested || (imageOnly ? DEFAULT_IMAGE_MODEL : config.defaultModel);
+      assertSupportedModel(model, {
+        kind: imageOnly ? 'image' : 'any',
+        allowUnlisted: config.allowUnlistedModels
+      });
+      return model;
+    }
+
+    /**
+     * Confine a caller-supplied save path to the configured output directory.
+     * These tools write bytes to disk from a prompt that may itself be derived
+     * from untrusted content, so an unconstrained path is an arbitrary-write
+     * primitive ("../../../.ssh/authorized_keys").
+     */
+    function resolveSavePath(requested: string): string {
+      const resolved = path.resolve(outputRoot, requested);
+      const relative = path.relative(outputRoot, resolved);
+      if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) {
+        throw new Error(
+          `save_path must stay inside the output directory (${outputRoot}). ` +
+            `Refusing to write to "${resolved}". Set GEMINI_OUTPUT_DIR to write elsewhere.`
+        );
+      }
+      return resolved;
+    }
+
+    // Helper: read a file, refusing anything large enough to threaten the
+    // process (every byte is base64-encoded into a second, larger buffer).
+    async function readFileChecked(filePath: string, label: string): Promise<Buffer> {
+      let stat;
+      try {
+        stat = await fs.stat(filePath);
+      } catch {
+        throw new Error(`${label} not found: ${filePath}`);
+      }
+      if (!stat.isFile()) {
+        throw new Error(`${label} is not a regular file: ${filePath}`);
+      }
+      if (stat.size > config.maxFileBytes) {
+        throw new Error(
+          `${label} is ${formatBytes(stat.size)}, over the ${formatBytes(config.maxFileBytes)} limit: ${filePath}`
+        );
+      }
+      return fs.readFile(filePath);
+    }
 
     // Helper: save image to disk
-    function saveImage(base64Data: string, savePath: string): string {
-      const dir = path.dirname(savePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      const buffer = Buffer.from(base64Data, 'base64');
-      fs.writeFileSync(savePath, buffer);
+    async function saveImage(base64Data: string, savePath: string): Promise<string> {
+      await fs.mkdir(path.dirname(savePath), { recursive: true });
+      await fs.writeFile(savePath, Buffer.from(base64Data, 'base64'));
       return savePath;
     }
 
@@ -382,9 +460,15 @@ async function main() {
 
     // Register tools/call handler
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
-      try {
-        const { name, arguments: args } = request.params;
+      const { name, arguments: args } = request.params;
 
+      // An unknown tool name is a protocol-level fault, not a tool that ran and
+      // failed — surface it as a JSON-RPC error so clients can tell them apart.
+      if (!TOOL_NAMES.has(name)) {
+        throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
+      }
+
+      try {
         switch (name) {
           case 'ask': {
             const schema = z.object({
@@ -392,7 +476,7 @@ async function main() {
               model: z.string().optional()
             });
             const input = schema.parse(args);
-            const model = input.model || config.defaultModel;
+            const model = resolveModel(input.model);
             const response = await client.generate(model, input.prompt);
             return {
               content: [{ type: 'text', text: response.text + modelFooter(response.modelVersion, model) }]
@@ -405,9 +489,9 @@ async function main() {
             });
             const input = schema.parse(args);
             const prompt = `Brainstorm ideas about: ${input.topic}`;
-            const response = await client.generate('gemini-3.1-pro-preview', prompt, BRAINSTORM_PROMPT);
+            const response = await client.generate(DEFAULT_TEXT_MODEL, prompt, BRAINSTORM_PROMPT);
             return {
-              content: [{ type: 'text', text: response.text + modelFooter(response.modelVersion, 'gemini-3.1-pro-preview') }]
+              content: [{ type: 'text', text: response.text + modelFooter(response.modelVersion, DEFAULT_TEXT_MODEL) }]
             };
           }
 
@@ -417,9 +501,9 @@ async function main() {
             });
             const input = schema.parse(args);
             const prompt = `Review this code:\n\n${input.code}`;
-            const response = await client.generate('gemini-3.1-pro-preview', prompt, CODE_REVIEW_PROMPT);
+            const response = await client.generate(DEFAULT_TEXT_MODEL, prompt, CODE_REVIEW_PROMPT);
             return {
-              content: [{ type: 'text', text: response.text + modelFooter(response.modelVersion, 'gemini-3.1-pro-preview') }]
+              content: [{ type: 'text', text: response.text + modelFooter(response.modelVersion, DEFAULT_TEXT_MODEL) }]
             };
           }
 
@@ -429,9 +513,9 @@ async function main() {
             });
             const input = schema.parse(args);
             const prompt = `Explain: ${input.concept}`;
-            const response = await client.generate('gemini-3.1-pro-preview', prompt, EXPLAIN_PROMPT);
+            const response = await client.generate(DEFAULT_TEXT_MODEL, prompt, EXPLAIN_PROMPT);
             return {
-              content: [{ type: 'text', text: response.text + modelFooter(response.modelVersion, 'gemini-3.1-pro-preview') }]
+              content: [{ type: 'text', text: response.text + modelFooter(response.modelVersion, DEFAULT_TEXT_MODEL) }]
             };
           }
 
@@ -439,14 +523,27 @@ async function main() {
             const schema = z.object({
               prompt: z.string().min(1),
               model: z.string().optional(),
-              aspect_ratio: z.string().optional(),
-              resolution: z.string().optional(),
+              aspect_ratio: z.enum(ALL_ASPECT_RATIOS).optional(),
+              resolution: z.enum(ALL_RESOLUTIONS).optional(),
               use_search_grounding: z.boolean().optional(),
-              reference_image_paths: z.array(z.string()).max(14).optional(),
+              reference_image_paths: z.array(z.string()).min(1).max(14).optional(),
               save_path: z.string().optional()
             });
             const input = schema.parse(args);
-            const model = input.model || DEFAULT_IMAGE_MODEL;
+            const model = resolveModel(input.model, true);
+
+            assertImageOptions(model, {
+              aspectRatio: input.aspect_ratio,
+              resolution: input.resolution,
+              referenceImages: !!input.reference_image_paths?.length,
+              searchGrounding: input.use_search_grounding,
+              allowUnlisted: config.allowUnlistedModels
+            });
+
+            // Resolve the destination before spending a generation on it.
+            const savePath = input.save_path
+              ? resolveSavePath(input.save_path)
+              : getAutoSavePath(config.outputDir, 'generated');
 
             // Load reference images if provided
             let referenceImages: Array<{ data: string; mimeType: string }> | undefined;
@@ -454,13 +551,7 @@ async function main() {
               referenceImages = [];
               for (const refPath of input.reference_image_paths) {
                 const resolved = path.resolve(refPath);
-                if (!fs.existsSync(resolved)) {
-                  return {
-                    content: [{ type: 'text', text: `Reference image not found: ${resolved}` }],
-                    isError: true
-                  };
-                }
-                const buf = fs.readFileSync(resolved);
+                const buf = await readFileChecked(resolved, 'Reference image');
                 referenceImages.push({
                   data: buf.toString('base64'),
                   mimeType: getMimeType(resolved)
@@ -484,8 +575,7 @@ async function main() {
             }
 
             const image = result.images[0];
-            const savePath = input.save_path || getAutoSavePath(config.outputDir, 'generated');
-            const savedTo = saveImage(image.data, savePath);
+            const savedTo = await saveImage(image.data, savePath);
 
             const content: any[] = [];
 
@@ -515,23 +605,27 @@ async function main() {
               prompt: z.string().min(1),
               image_path: z.string().min(1),
               model: z.string().optional(),
-              aspect_ratio: z.string().optional(),
-              resolution: z.string().optional(),
+              aspect_ratio: z.enum(ALL_ASPECT_RATIOS).optional(),
+              resolution: z.enum(ALL_RESOLUTIONS).optional(),
               save_path: z.string().optional()
             });
             const input = schema.parse(args);
-            const model = input.model || DEFAULT_IMAGE_MODEL;
+            const model = resolveModel(input.model, true);
+
+            assertImageOptions(model, {
+              aspectRatio: input.aspect_ratio,
+              resolution: input.resolution,
+              allowUnlisted: config.allowUnlistedModels
+            });
+
+            // Resolve the destination before spending an edit on it.
+            const savePath = input.save_path
+              ? resolveSavePath(input.save_path)
+              : getAutoSavePath(config.outputDir, 'edited');
 
             // Read the source image
             const imagePath = path.resolve(input.image_path);
-            if (!fs.existsSync(imagePath)) {
-              return {
-                content: [{ type: 'text', text: `Source image not found: ${imagePath}` }],
-                isError: true
-              };
-            }
-
-            const imageBuffer = fs.readFileSync(imagePath);
+            const imageBuffer = await readFileChecked(imagePath, 'Source image');
             const imageBase64 = imageBuffer.toString('base64');
             const mimeType = getMimeType(imagePath);
 
@@ -549,8 +643,7 @@ async function main() {
             }
 
             const image = result.images[0];
-            const savePath = input.save_path || getAutoSavePath(config.outputDir, 'edited');
-            const savedTo = saveImage(image.data, savePath);
+            const savedTo = await saveImage(image.data, savePath);
 
             const content: any[] = [];
 
@@ -576,7 +669,7 @@ async function main() {
               model: z.string().optional()
             });
             const input = schema.parse(args);
-            const model = input.model || config.defaultModel;
+            const model = resolveModel(input.model);
 
             const result = await client.searchWeb(model, input.query, {
               systemPrompt: SEARCH_WEB_PROMPT
@@ -605,7 +698,7 @@ async function main() {
               thinking_budget: z.number().optional()
             });
             const input = schema.parse(args);
-            const model = input.model || config.defaultModel;
+            const model = resolveModel(input.model);
 
             const result = await client.generateWithThinking(model, input.prompt, {
               thinkingLevel: input.thinking_level,
@@ -631,7 +724,7 @@ async function main() {
               model: z.string().optional()
             });
             const input = schema.parse(args);
-            const model = input.model || config.defaultModel;
+            const model = resolveModel(input.model);
 
             const result = await client.executeCode(model, input.prompt, CODE_EXECUTION_PROMPT);
 
@@ -654,7 +747,7 @@ async function main() {
               model: z.string().optional()
             });
             const input = schema.parse(args);
-            const model = input.model || config.defaultModel;
+            const model = resolveModel(input.model);
 
             const result = await client.fetchUrl(model, input.prompt, input.urls, URL_CONTEXT_PROMPT);
 
@@ -678,18 +771,11 @@ async function main() {
               model: z.string().optional()
             });
             const input = schema.parse(args);
-            const model = input.model || config.defaultModel;
+            const model = resolveModel(input.model);
             const prompt = input.prompt || 'Describe this image in detail';
 
             const imagePath = path.resolve(input.image_path);
-            if (!fs.existsSync(imagePath)) {
-              return {
-                content: [{ type: 'text', text: `Image not found: ${imagePath}` }],
-                isError: true
-              };
-            }
-
-            const imageBuffer = fs.readFileSync(imagePath);
+            const imageBuffer = await readFileChecked(imagePath, 'Image');
             const imageBase64 = imageBuffer.toString('base64');
             const mimeType = getMimeType(imagePath);
 
@@ -705,12 +791,24 @@ async function main() {
               model: z.string().optional()
             });
             const input = schema.parse(args);
-            const model = input.model || config.defaultModel;
+            const model = resolveModel(input.model);
 
             const filePath = path.resolve(input.file_path);
-            if (!fs.existsSync(filePath)) {
+            // Size-check locally so an oversized file fails with an actionable
+            // message instead of an opaque remote rejection after the upload.
+            const stat = await fs.stat(filePath).catch(() => null);
+            if (!stat || !stat.isFile()) {
               return {
                 content: [{ type: 'text', text: `File not found: ${filePath}` }],
+                isError: true
+              };
+            }
+            if (stat.size > config.maxFileBytes) {
+              return {
+                content: [{
+                  type: 'text',
+                  text: `File is ${formatBytes(stat.size)}, over the ${formatBytes(config.maxFileBytes)} upload limit: ${filePath}`
+                }],
                 isError: true
               };
             }
@@ -718,7 +816,7 @@ async function main() {
             const result = await client.uploadAndQuery(model, filePath, input.query);
 
             let responseText = result.text;
-            responseText += `\n\n---\n*File: ${result.fileName}*`;
+            responseText += `\n\n---\n*File: ${path.basename(filePath)} (uploaded as ${result.fileName}, since deleted)*`;
             responseText += modelFooter(result.modelVersion, model);
 
             return { content: [{ type: 'text', text: responseText }] };
@@ -732,7 +830,7 @@ async function main() {
               model: z.string().optional()
             });
             const input = schema.parse(args);
-            const model = input.model || config.defaultModel;
+            const model = resolveModel(input.model);
 
             const result = await client.searchMaps(model, input.query, {
               systemPrompt: GOOGLE_MAPS_PROMPT,
@@ -771,7 +869,7 @@ async function main() {
     await server.connect(transport);
 
     // Log startup message to stderr (stdout is used for MCP protocol)
-    console.error('Gemini MCP Server v3.2.0 running');
+    console.error(`Gemini MCP Server v${VERSION} running`);
 
     // Handle graceful shutdown
     process.on('SIGINT', async () => {

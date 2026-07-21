@@ -1,6 +1,8 @@
 import { GoogleGenAI, type Part } from '@google/genai';
 import * as path from 'path';
-import { Config, GEMINI_3_MODELS, NANO_BANANA_PRO_MODEL } from './config.js';
+import {
+  Config, isImagenModel, isNanoBananaProModel, rejectsMinimalThinking, usesThinkingLevel
+} from './config.js';
 
 export interface ImageResult {
   data: string;       // base64-encoded image bytes
@@ -78,22 +80,35 @@ export class GeminiClient {
     this.timeout = config.timeout;
   }
 
+  /**
+   * Races an API call against a timeout, clearing the timer once the race
+   * settles. Without the clear, every successful call would leave a live timer
+   * holding its closure for up to timeout * multiplier ms after the response.
+   */
+  private withTimeout<T>(operation: () => Promise<T>, multiplier = 1): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error('Request timeout')),
+        this.timeout * multiplier
+      );
+    });
+    return Promise.race([operation(), timeout]).finally(() => clearTimeout(timer));
+  }
+
   async generate(
     model: string,
     prompt: string,
     systemPrompt?: string
   ): Promise<GenerateResponse> {
     try {
-      const response = await Promise.race([
-        this.ai.models.generateContent({
-          model,
-          contents: prompt,
-          config: systemPrompt ? { systemInstruction: systemPrompt } : undefined
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Request timeout')), this.timeout)
-        )
-      ]);
+      // 3x: this backs ask/brainstorm/code_review/explain, which default to a
+      // Pro reasoning model and can be handed large code blobs.
+      const response = await this.withTimeout(() => this.ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: systemPrompt ? { systemInstruction: systemPrompt } : undefined
+      }), 3);
 
       return { text: response.text ?? '', modelVersion: (response as any).modelVersion };
     } catch (error: any) {
@@ -112,9 +127,7 @@ export class GeminiClient {
       referenceImages?: Array<{ data: string; mimeType: string }>;
     }
   ): Promise<GenerateImageResponse> {
-    const isImagenModel = model.startsWith('imagen-');
-
-    if (isImagenModel) {
+    if (isImagenModel(model)) {
       return this.generateWithImagen(model, prompt, options);
     }
 
@@ -138,27 +151,22 @@ export class GeminiClient {
         { text: prompt }
       ];
 
-      const response = await Promise.race([
-        this.ai.models.generateContent({
-          model,
-          contents,
-          config: {
-            responseModalities: ['TEXT', 'IMAGE'],
-            systemInstruction: options?.systemPrompt,
-            ...(options?.aspectRatio || options?.resolution
-              ? {
-                  imageConfig: {
-                    ...(options.aspectRatio && { aspectRatio: options.aspectRatio }),
-                    ...(options.resolution && { imageSize: options.resolution })
-                  }
+      const response = await this.withTimeout(() => this.ai.models.generateContent({
+        model,
+        contents,
+        config: {
+          responseModalities: ['TEXT', 'IMAGE'],
+          systemInstruction: options?.systemPrompt,
+          ...(options?.aspectRatio || options?.resolution
+            ? {
+                imageConfig: {
+                  ...(options.aspectRatio && { aspectRatio: options.aspectRatio }),
+                  ...(options.resolution && { imageSize: options.resolution })
                 }
-              : {})
-          }
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Request timeout')), this.timeout * 3)
-        )
-      ]);
+              }
+            : {})
+        }
+      }), 3);
 
       return this.extractImageResponse(response);
     } catch (error: any) {
@@ -174,19 +182,14 @@ export class GeminiClient {
     }
   ): Promise<SearchWebResponse> {
     try {
-      const response = await Promise.race([
-        this.ai.models.generateContent({
-          model,
-          contents: prompt,
-          config: {
-            systemInstruction: options?.systemPrompt,
-            tools: [{ googleSearch: {} }]
-          }
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Request timeout')), this.timeout * 3)
-        )
-      ]);
+      const response = await this.withTimeout(() => this.ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          systemInstruction: options?.systemPrompt,
+          tools: [{ googleSearch: {} }]
+        }
+      }), 3);
 
       return this.extractSearchResponse(response);
     } catch (error: any) {
@@ -204,16 +207,14 @@ export class GeminiClient {
     }
   ): Promise<ThinkingResponse> {
     try {
-      const isGemini3 = GEMINI_3_MODELS.some(m => model.includes(m));
-
       const thinkingConfig: any = {
         includeThoughts: true,
       };
 
-      if (isGemini3) {
+      if (usesThinkingLevel(model)) {
         let level = (options?.thinkingLevel || 'high').toLowerCase();
         // Gemini 3.1 Pro does not support 'minimal' — silently bump to 'low'.
-        if (level === 'minimal' && /3\.1-pro/.test(model)) {
+        if (level === 'minimal' && rejectsMinimalThinking(model)) {
           level = 'low';
         }
         thinkingConfig.thinkingLevel = level;
@@ -221,19 +222,14 @@ export class GeminiClient {
         thinkingConfig.thinkingBudget = options?.thinkingBudget ?? 8192;
       }
 
-      const response = await Promise.race([
-        this.ai.models.generateContent({
-          model,
-          contents: prompt,
-          config: {
-            systemInstruction: options?.systemPrompt,
-            thinkingConfig
-          }
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Request timeout')), this.timeout * 5)
-        )
-      ]);
+      const response = await this.withTimeout(() => this.ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          systemInstruction: options?.systemPrompt,
+          thinkingConfig
+        }
+      }), 5);
 
       return this.extractThinkingResponse(response);
     } catch (error: any) {
@@ -247,19 +243,14 @@ export class GeminiClient {
     systemPrompt?: string
   ): Promise<CodeExecutionResponse> {
     try {
-      const response = await Promise.race([
-        this.ai.models.generateContent({
-          model,
-          contents: prompt,
-          config: {
-            systemInstruction: systemPrompt,
-            tools: [{ codeExecution: {} }]
-          }
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Request timeout')), this.timeout * 3)
-        )
-      ]);
+      const response = await this.withTimeout(() => this.ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          systemInstruction: systemPrompt,
+          tools: [{ codeExecution: {} }]
+        }
+      }), 3);
 
       return this.extractCodeExecutionResponse(response);
     } catch (error: any) {
@@ -276,19 +267,14 @@ export class GeminiClient {
     try {
       const fullPrompt = `${prompt}\n\nURLs to analyze:\n${urls.map(u => `- ${u}`).join('\n')}`;
 
-      const response = await Promise.race([
-        this.ai.models.generateContent({
-          model,
-          contents: fullPrompt,
-          config: {
-            systemInstruction: systemPrompt,
-            tools: [{ urlContext: {} }]
-          }
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Request timeout')), this.timeout * 3)
-        )
-      ]);
+      const response = await this.withTimeout(() => this.ai.models.generateContent({
+        model,
+        contents: fullPrompt,
+        config: {
+          systemInstruction: systemPrompt,
+          tools: [{ urlContext: {} }]
+        }
+      }), 3);
 
       return this.extractUrlContextResponse(response);
     } catch (error: any) {
@@ -308,15 +294,10 @@ export class GeminiClient {
         { text: prompt }
       ];
 
-      const response = await Promise.race([
-        this.ai.models.generateContent({
-          model,
-          contents
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Request timeout')), this.timeout * 2)
-        )
-      ]);
+      const response = await this.withTimeout(() => this.ai.models.generateContent({
+        model,
+        contents
+      }), 2);
 
       return { text: response.text ?? '', modelVersion: (response as any).modelVersion };
     } catch (error: any) {
@@ -329,19 +310,24 @@ export class GeminiClient {
     filePath: string,
     query?: string
   ): Promise<FileUploadResponse> {
+    let uploadedName: string | undefined;
+
     try {
-      const uploadResult = await this.ai.files.upload({
+      const uploadResult = await this.withTimeout(() => this.ai.files.upload({
         file: filePath,
         config: {
           mimeType: this.inferMimeType(filePath)
         }
-      });
+      }), 3);
 
       if (!uploadResult.name) {
         throw new Error('File upload failed: no file name returned');
       }
+      uploadedName = uploadResult.name;
 
-      // Poll for ACTIVE state
+      // Poll for ACTIVE state. maxWait bounds the total wait; each individual
+      // poll is also raced against a timeout so one hung request can't stall
+      // the loop forever.
       let file = uploadResult;
       const maxWait = 60000;
       const pollInterval = 2000;
@@ -350,7 +336,7 @@ export class GeminiClient {
       while (file.state === 'PROCESSING' && waited < maxWait) {
         await new Promise(resolve => setTimeout(resolve, pollInterval));
         waited += pollInterval;
-        file = await this.ai.files.get({ name: uploadResult.name });
+        file = await this.withTimeout(() => this.ai.files.get({ name: uploadedName! }));
       }
 
       if (file.state === 'FAILED') {
@@ -366,15 +352,10 @@ export class GeminiClient {
         { text: promptText }
       ];
 
-      const response = await Promise.race([
-        this.ai.models.generateContent({
-          model,
-          contents
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Request timeout')), this.timeout * 3)
-        )
-      ]);
+      const response = await this.withTimeout(() => this.ai.models.generateContent({
+        model,
+        contents
+      }), 3);
 
       return {
         text: response.text ?? '',
@@ -383,6 +364,17 @@ export class GeminiClient {
       };
     } catch (error: any) {
       throw this.handleError(error);
+    } finally {
+      // The remote file has served its purpose once the query returns. Without
+      // this, every upload_file call leaks a file against the Files API quota
+      // until Google's own TTL expires it.
+      if (uploadedName) {
+        try {
+          await this.withTimeout(() => this.ai.files.delete({ name: uploadedName! }));
+        } catch {
+          // Cleanup is best-effort; never mask the real result or error.
+        }
+      }
     }
   }
 
@@ -412,16 +404,11 @@ export class GeminiClient {
         };
       }
 
-      const response = await Promise.race([
-        this.ai.models.generateContent({
-          model,
-          contents: prompt,
-          config
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Request timeout')), this.timeout * 3)
-        )
-      ]);
+      const response = await this.withTimeout(() => this.ai.models.generateContent({
+        model,
+        contents: prompt,
+        config
+      }), 3);
 
       return this.extractMapsResponse(response);
     } catch (error: any) {
@@ -441,7 +428,7 @@ export class GeminiClient {
     }
   ): Promise<GenerateImageResponse> {
     try {
-      const isProModel = model === NANO_BANANA_PRO_MODEL;
+      const isProModel = isNanoBananaProModel(model);
 
       // Build contents: text prompt + optional reference images
       let contents: string | Part[];
@@ -474,12 +461,10 @@ export class GeminiClient {
       }
 
       const timeoutMultiplier = isProModel ? 5 : 3;
-      const response = await Promise.race([
-        this.ai.models.generateContent({ model, contents, config }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Request timeout')), this.timeout * timeoutMultiplier)
-        )
-      ]);
+      const response = await this.withTimeout(
+        () => this.ai.models.generateContent({ model, contents, config }),
+        timeoutMultiplier
+      );
 
       return this.extractImageResponse(response);
     } catch (error: any) {
@@ -493,23 +478,34 @@ export class GeminiClient {
     options?: {
       aspectRatio?: string;
       resolution?: string;
+      useSearchGrounding?: boolean;
+      referenceImages?: Array<{ data: string; mimeType: string }>;
     }
   ): Promise<GenerateImageResponse> {
+    // Imagen's predict endpoint accepts neither reference images nor search
+    // grounding. Fail loudly rather than returning a plausible image that
+    // silently ignored them.
+    if (options?.referenceImages?.length) {
+      throw new Error(
+        `Model "${model}" does not accept reference images. Use a Gemini image model instead.`
+      );
+    }
+    if (options?.useSearchGrounding) {
+      throw new Error(
+        `Model "${model}" does not support Google Search grounding. Use Nano Banana Pro instead.`
+      );
+    }
+
     try {
-      const response = await Promise.race([
-        this.ai.models.generateImages({
-          model,
-          prompt,
-          config: {
-            numberOfImages: 1,
-            ...(options?.aspectRatio && { aspectRatio: options.aspectRatio }),
-            ...(options?.resolution && { imageSize: options.resolution })
-          }
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Request timeout')), this.timeout * 3)
-        )
-      ]);
+      const response = await this.withTimeout(() => this.ai.models.generateImages({
+        model,
+        prompt,
+        config: {
+          numberOfImages: 1,
+          ...(options?.aspectRatio && { aspectRatio: options.aspectRatio }),
+          ...(options?.resolution && { imageSize: options.resolution })
+        }
+      }), 3);
 
       const images: ImageResult[] = [];
       if (response.generatedImages) {
